@@ -29,6 +29,8 @@ dependencies = [
     "python-dotenv",
     "ruff",
     "scikit-learn",
+    "torch",
+    "torchvision",
     "tqdm",
     "typer",
 ]
@@ -37,8 +39,8 @@ requires-python = "~=3.11.0"
 
 [tool.ruff]
 line-length = 99
-src = ["Neural Networks"]
-include = ["pyproject.toml", "Neural Networks/**/*.py"]
+src = ["neural_networks"]
+include = ["pyproject.toml", "neural_networks/**/*.py"]
 
 [tool.ruff.lint]
 extend-select = ["I"]  # Add import sorting

@@ -1,0 +1,38 @@
+Brotli @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_f7i0oxypt6/croot/brotli-split_1736182464088/work
+click==8.2.1
+contourpy @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_2cvjf0v4ux/croot/contourpy_1732540055997/work
+cycler @ file:///tmp/build/80754af9/cycler_1637851556182/work
+filelock==3.18.0
+fonttools @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/abs_ce1jt_55vl/croot/fonttools_1737039388732/work
+fsspec==2025.5.1
+iniconfig==2.1.0
+Jinja2==3.1.6
+kiwisolver @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/abs_cc2l_z_0ri/croot/kiwisolver_1737039586949/work
+loguru==0.7.3
+markdown-it-py==3.0.0
+MarkupSafe==3.0.2
+matplotlib==3.10.0
+mdurl==0.1.2
+mpmath==1.3.0
+networkx==3.5
+numpy @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/abs_203cjxahp8/croot/numpy_and_numpy_base_1747238033141/work/dist/numpy-2.2.5-cp313-cp313-macosx_11_0_arm64.whl#sha256=b2d6fa488ee01b68bd316154338a2b6da8f6096b11292d8c6a872a9632eb7494
+packaging @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/abs_a6_qk3qyg7/croot/packaging_1734472142254/work
+pillow @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_bfoqpm49mx/croot/pillow_1744613079607/work
+pluggy==1.6.0
+Pygments==2.19.1
+pyparsing @ file:///Users/builder/cbouss/buildout/croot/pyparsing_1735850351026/work
+pytest==8.3.5
+python-dateutil @ file:///Users/builder/cbouss/perseverance-python-buildout/croot/python-dateutil_1728585579455/work
+python-dotenv==1.1.0
+rich==14.0.0
+setuptools==72.1.0
+shellingham==1.5.4
+six @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_03myqm7p6o/croot/six_1744271511946/work
+sympy==1.14.0
+torch==2.7.0
+torchvision==0.22.0
+tornado @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_998hje7kox/croot/tornado_1747918067998/work
+tqdm==4.67.1
+typer==0.16.0
+typing_extensions==4.13.2
+wheel==0.45.1
