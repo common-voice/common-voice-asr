@@ -65,8 +65,12 @@ create_environment:
 ## Make dataset
 .PHONY: data
 data: requirements
-	$(PYTHON_INTERPRETER) Neural Networks/dataset.py
+	$(PYTHON_INTERPRETER) neural_networks/dataset.py
 
+## Train the model
+.PHONY: train
+train:
+	$(PYTHON_INTERPRETER) neural_networks/modeling/train.py
 
 #################################################################################
 # Self Documenting Commands                                                     #
