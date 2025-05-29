@@ -4,7 +4,7 @@ from loguru import logger
 from tqdm import tqdm
 import typer
 
-from Neural Networks.config import MODELS_DIR, PROCESSED_DATA_DIR
+from neural_networks.config import MODELS_DIR, PROCESSED_DATA_DIR
 
 app = typer.Typer()
 
