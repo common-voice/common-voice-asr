@@ -1,4 +1,4 @@
-Brotli 
+brotli 
 click==8.2.1
 contourpy 
 cycler
