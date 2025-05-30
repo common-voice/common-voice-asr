@@ -48,6 +48,6 @@ include = ["pyproject.toml", "neural_networks/**/*.py"]
 extend-select = ["I"]  # Add import sorting
 
 [tool.ruff.lint.isort]
-known-first-party = ["Neural Networks"]
+known-first-party = ["neural_networks"]
 force-sort-within-sections = true
 
