@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from loguru import logger
-from tqdm import tqdm
+import torch
 import typer
 
 from neural_networks.config import MODELS_DIR, PROCESSED_DATA_DIR
@@ -17,14 +17,22 @@ def main(
     model_path: Path = MODELS_DIR / "model.pkl",
     # -----------------------------------------
 ):
-    # ---- REPLACE THIS WITH YOUR OWN CODE ----
-    logger.info("Training some model...")
-    for i in tqdm(range(10), total=10):
-        if i == 5:
-            logger.info("Something happened for iteration 5.")
+    logger.info("Starting toy model training...")
+
+    input = torch.ones(5)
+    expected_output = torch.zeros(3)
+
+    weight = torch.randn(5,3,requires_grad=True)
+    bias = torch.randn(3, requires_grad=True)
+
+    z = torch.matmul(input, weight) + bias
+    loss_function = torch.nn.functional.binary_cross_entropy_with_logits(z, expected_output)
+
+    logger.info(f"Loss computed: {loss_function.item(): .4f}")
     logger.success("Modeling training complete.")
     # -----------------------------------------
 
 
 if __name__ == "__main__":
     app()
+

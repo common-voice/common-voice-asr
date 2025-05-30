@@ -3,7 +3,7 @@ requires = ["flit_core >=3.2,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-name = "Neural Networks"
+name = "common-voice-asr"
 version = "0.0.1"
 description = "Creating neural networks based on speech data"
 authors = [
@@ -34,8 +34,10 @@ dependencies = [
     "tqdm",
     "typer",
 ]
-requires-python = "~=3.11.0"
+requires-python = ">=3.11.0, <3.14"
 
+[tool.flit.module]
+name = "neural_networks"
 
 [tool.ruff]
 line-length = 99

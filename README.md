@@ -7,8 +7,10 @@ Constructing different types of neural networks trained on Common Voice speech d
     cd common-voice-asr
 2. Create the environment
     make create_environment
-    conda activate $(PROJECT_NAME)
+    conda activate create_environment
 3. Install dependencies
     make requirements
 4. Train the model
     make train
+5. Test the model
+    make test
