@@ -157,7 +157,9 @@ def main(check_data: bool = False, model_type: str = "cnn", epochs: int = 3):
             writer_rnn.add_scalar('Loss/train', train_loss, epoch)
             writer_rnn.add_scalar('Loss/val', val_loss, epoch)
             writer_rnn.add_scalar('Accuracy/val', val_acc, epoch)
-
+        
+        writer.flush()
+        writer.close()
         
         print(f"\n Epoch {epoch} completed")
         print(f"Train loss: {train_loss:.4f}")
@@ -166,5 +168,4 @@ def main(check_data: bool = False, model_type: str = "cnn", epochs: int = 3):
 
 if __name__ == "__main__":
     args = parse_command_args()
-    main(check_data=args.check_data, model_type=args.model_type, epochs=args.epochs)
-    app()
+    main(check_data=args.check_data, mode
