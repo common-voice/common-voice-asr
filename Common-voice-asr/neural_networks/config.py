@@ -31,4 +31,5 @@ try:
 
     logger.remove(0)
     logger.add(lambda msg: tqdm.write(msg, end=""), colorize=True)
-except ModuleNo
+except ModuleNotFoundError:
+    pass
