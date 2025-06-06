@@ -1,6 +1,6 @@
 # to run: python -m neural_networks.modeling.train (via Common-voice-asr)
 # add --check-data
-# add --model_type cnn --epochs 3
+# add --model-type cnn --epochs 3
 
 from loguru import logger
 import torch
