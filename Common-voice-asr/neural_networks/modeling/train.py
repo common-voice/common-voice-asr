@@ -168,5 +168,4 @@ def main(check_data: bool = False, model_type: str = "cnn", epochs: int = 3):
 
 if __name__ == "__main__":
     args = parse_command_args()
-    main(check_data=args.check_data, model_type=args.model_type, epochs=args.epochs)
-    app()
+    main(check_data=args.check_data, mode
