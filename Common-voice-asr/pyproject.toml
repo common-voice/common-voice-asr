@@ -29,6 +29,7 @@ dependencies = [
     "python-dotenv",
     "ruff",
     "scikit-learn",
+    "tensorboard",
     "torch",
     "torchvision",
     "tqdm",

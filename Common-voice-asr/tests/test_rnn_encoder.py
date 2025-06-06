@@ -2,6 +2,7 @@
 import os
 import numpy as np
 import torch
+import torch.nn.functional as F
 from neural_networks.rnn_encoder import RNNEncoder
 from neural_networks.wrap_encoder import WrapEncoder
 
@@ -18,11 +19,13 @@ def test_single_forward_pass():
     path = os.path.join(PROCESSED_DIR, npy_files[0])
     spect = np.load(path)
 
-    spect_tensor = torch.tensor(spect, dtype=torch.float32).transpose(0,1).unsqueeze(0)
+    spect_tensor = torch.tensor(spect, dtype=torch.float32)
+
+    spect_tensor = spect_tensor.transpose(0, 1).unsqueeze(0)
 
     with torch.no_grad():
         output = encoder(spect_tensor)
-    
+        
     assert output.shape == (1, 256), f"Unexpected shape: {output.shape}"
     
 
@@ -78,8 +81,8 @@ def test_wrapped_encoder_single_forward_pass():
     tensor = torch.tensor(spect.T, dtype=torch.float32).unsqueeze(0)
 
     if (tensor[-1] < 300).any():
-        pad_width = 300 - tensor.shape[1]
-        tensor = torch.nn.functional.pad(tensor, (0, 0, 0, pad_width))
+        pad_len = 300 - tensor.shape[1]
+        tensor = F.pad(tensor, (0, 0, 0, pad_len)) 
     
     with torch.no_grad():
         output = wrap_encoder(tensor)
