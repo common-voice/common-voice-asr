@@ -41,13 +41,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install flit
         flit install --symlink
-    - name: Debug - Show repo structure
-      run: |
-        echo "PWD: $(pwd)"
-        echo "Listing top-level:"
-        ls -la
-        echo "Listing project dir:"
-        ls -la common-voice-asr/Common-voice-asr
     - name: Test with pytest
       working-directory: ./Common-voice-asr
       run: |
