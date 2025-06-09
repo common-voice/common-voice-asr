@@ -13,7 +13,6 @@ from torch.utils.data import random_split, DataLoader
 from pathlib import Path
 
 from torch.utils.tensorboard import SummaryWriter
-writer = SummaryWriter()
 
 from neural_networks.wrap_encoder import WrapEncoder
 from neural_networks.datasets import MiniCVDataset
@@ -22,6 +21,8 @@ from neural_networks.config import MODELS_DIR, PROCESSED_DATA_DIR
 
 from neural_networks.cnn_encoder import CNNEncoder
 from neural_networks.rnn_encoder import RNNEncoder
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 import argparse
 
@@ -97,11 +98,10 @@ def validate(model,val_loader, criterion, device):
 
 @app.command()
 def main(check_data: bool = False, model_type: str = "cnn", epochs: int = 3):
-    manifest_path = "/Users/setongerrity/Desktop/Mozilla/common-voice-asr/Common-voice-asr/data/manifest.csv"
-    spect_dir = "/Users/setongerrity/Desktop/Mozilla/common-voice-asr/Common-voice-asr/data/processed/mini_cv"
+    manifest_path = BASE_DIR / "data" / "manifest.csv"
+    spect_dir = BASE_DIR / "data" / "processed" / "mini_cv"
 
-    cnn_log_dir = "/Users/setongerrity/Desktop/Mozilla/common-voice-asr/Common-voice-asr/neural_networks/runs/week3_cnn"
-    rnn_log_dir = "/Users/setongerrity/Desktop/Mozilla/common-voice-asr/Common-voice-asr/neural_networks/runs/week3_rnn" 
+    log_dir = BASE_DIR / "neural_networks" / "runs" / f"week3_{model_type}"
 
     df = pd.read_csv(manifest_path)
     if 'label' not in df.columns:
@@ -142,29 +142,23 @@ def main(check_data: bool = False, model_type: str = "cnn", epochs: int = 3):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=0.0001)
 
+    writer = SummaryWriter()
+
     for epoch in range(1, epochs + 1):
         train_loss = train(model, train_loader, optimizer, criterion, device, epoch, log_interval=20)
         val_loss, val_acc = validate(model,val_loader, criterion, device)
 
-        if model_type == "cnn":
-            writer_cnn = SummaryWriter(cnn_log_dir)
-            writer_cnn.add_scalar('Loss/train', train_loss, epoch)
-            writer_cnn.add_scalar('Loss/val', val_loss, epoch)
-            writer_cnn.add_scalar('Accuracy/val', val_acc, epoch)
-        elif model_type == "rnn":
-
-            writer_rnn = SummaryWriter(rnn_log_dir)
-            writer_rnn.add_scalar('Loss/train', train_loss, epoch)
-            writer_rnn.add_scalar('Loss/val', val_loss, epoch)
-            writer_rnn.add_scalar('Accuracy/val', val_acc, epoch)
+        writer.add_scalar('Loss/train', train_loss, epoch)
+        writer.add_scalar('Loss/val', val_loss, epoch)
+        writer.add_scalar('Accuracy/val', val_acc, epoch)
         
-        writer.flush()
-        writer.close()
         
         print(f"\n Epoch {epoch} completed")
         print(f"Train loss: {train_loss:.4f}")
         print(f"Val loss: {val_loss:.4f}")
         print(f"Val accuracy: {val_acc:.4f}")
+    writer.flush()
+    writer.close()
 
 if __name__ == "__main__":
     args = parse_command_args()
