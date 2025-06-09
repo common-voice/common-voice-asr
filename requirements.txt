@@ -16,7 +16,7 @@ cffi==1.17.1
 charset-normalizer==3.4.2
 click==8.2.1
 comm==0.2.2
--e git+https://github.com/common-voice/common-voice-asr.git@84772809d1672268b13b8d51c40db08793d338c6#egg=common_voice_asr&subdirectory=Common-voice-asr
+-e ./Common-voice-asr
 contourpy==1.3.2
 cycler==0.12.1
 debugpy==1.8.14
