@@ -2,10 +2,15 @@
 import os
 import numpy as np
 import torch
+from dotenv import load_dotenv
+from pathlib import Path
 from neural_networks.cnn_encoder import CNNEncoder
 from neural_networks.wrap_encoder import WrapEncoder
 
-PROCESSED_DIR = "/Users/setongerrity/Desktop/Mozilla/common-voice-asr/Common-voice-asr/data/processed/mini_cv"
+load_dotenv()
+
+BASE_DIR = Path(os.getenv("BASE_DIR"))
+PROCESSED_DIR = BASE_DIR / "data" / "processed" / "mini_cv"
 NUM_TEST_FILES = 5
 
 def load_spectogram(path):
@@ -18,7 +23,7 @@ def test_single_forward_pass():
     encoder = CNNEncoder()
     encoder.eval()
 
-    npy_files = [file for file in os.listdir(PROCESSED_DIR) if file.endswith(".npy")][:NUM_TEST_FILES]
+    npy_files = [file for file in PROCESSED_DIR.glob("*.npy")][:NUM_TEST_FILES]
     assert len(npy_files) > 0, "No files found for testing"
 
     for filename in npy_files:
@@ -33,7 +38,7 @@ def test_batch_forward_pass():
     encoder = CNNEncoder()
     encoder.eval()
 
-    npy_files = [file for file in os.listdir(PROCESSED_DIR) if file.endswith(".npy")][:NUM_TEST_FILES]
+    npy_files = [file for file in PROCESSED_DIR.glob("*.npy")][:NUM_TEST_FILES]
     tensors = []
     max_width = 0
 
@@ -62,7 +67,7 @@ def test_wrapped_encoder_single_forward_pass():
     wrap_encoder = WrapEncoder(encoder)
     wrap_encoder.eval()
 
-    npy_files = [file for file in os.listdir(PROCESSED_DIR) if file.endswith(".npy")]
+    npy_files = [file for file in PROCESSED_DIR.glob("*.npy")]
     spect = np.load(os.path.join(PROCESSED_DIR, npy_files[0]))
 
     tensor = torch.tensor(spect, dtype=torch.float32).unsqueeze(0).unsqueeze(0)

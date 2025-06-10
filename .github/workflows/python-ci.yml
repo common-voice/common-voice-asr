@@ -43,5 +43,7 @@ jobs:
         flit install --symlink
     - name: Test with pytest
       working-directory: ./Common-voice-asr
+      env:
+        BASE_DIR: ${{ github.workspace }}/Common-voice-asr
       run: |
         pytest

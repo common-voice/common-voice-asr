@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 
 class RNNEncoder(nn.Module):
@@ -9,8 +8,6 @@ class RNNEncoder(nn.Module):
         self.output_proj = nn.Linear(hidden_size * 2, projection_size)
 
     def forward(self, x):
-        x = x.squeeze(1)
-        x = x.permute(0, 2, 1)
         x = self.input_proj(x)
         output, (hn, cn) = self.lstm(x)
 
