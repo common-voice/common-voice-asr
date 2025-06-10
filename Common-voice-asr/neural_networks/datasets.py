@@ -62,10 +62,21 @@ import torch.nn.functional as F
 
 # Collate_fn implementation for RNN
 def rnn_collate_fn(batch):
-    return 0
+    spects, transcripts = zip(*batch)
 
+    max_T = max(s.shape[-1] for s in spects)
+    padded_spects = []
+    for s in spects:
+        pad_len = max_T - s.shape[-1]
 
-from torch.nn.utils.rnn import pad_sequence
+        padded_s = F.pad(s, pad=(0, pad_len), mode='constant', value=0)
+        padded_spects.append(padded_s)
+    batch_tensor = torch.stack(padded_spects)
+    if batch_tensor.dim() == 4:
+        batch_tensor = batch_tensor.squeeze(1)
+    batch_tensor = batch_tensor.permute(0, 2, 1)
+    label_tensor = torch.tensor(transcripts, dtype=torch.long)
+    return batch_tensor, label_tensor
 
 #custom implementation for variable-length spects
 def collate_fn(batch):

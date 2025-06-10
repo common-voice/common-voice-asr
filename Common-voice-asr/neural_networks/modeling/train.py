@@ -17,8 +17,7 @@ from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
 
 from neural_networks.wrap_encoder import WrapEncoder
-from neural_networks.datasets import MiniCVDataset
-from neural_networks.datasets import collate_fn
+from neural_networks.datasets import MiniCVDataset, collate_fn, rnn_collate_fn
 from neural_networks.config import MODELS_DIR, PROCESSED_DATA_DIR
 
 from neural_networks.cnn_encoder import CNNEncoder
@@ -119,8 +118,17 @@ def main(check_data: bool = False, model_type: str = "cnn", epochs: int = 3):
     test_len = total_len - train_len - val_len
     train_set, val_set, test_set = random_split(dataset, [train_len, val_len, test_len])
 
-    train_loader = DataLoader(train_set, batch_size=4, collate_fn=collate_fn, shuffle=True)
-    val_loader = DataLoader(val_set, batch_size=4, collate_fn=collate_fn)
+    if model_type == "cnn":
+        model = CNNEncoder()
+        collate = collate_fn
+    elif model_type == "rnn":
+        model = RNNEncoder()
+        collate = rnn_collate_fn
+    else:
+        raise ValueError("Unknown model type: {model_type}")
+    
+    train_loader = DataLoader(train_set, batch_size=4, collate_fn=collate, shuffle=True)
+    val_loader = DataLoader(val_set, batch_size=4, collate_fn=collate)
 
     if check_data:
         for batch in train_loader:
@@ -130,13 +138,6 @@ def main(check_data: bool = False, model_type: str = "cnn", epochs: int = 3):
             print("Transcripts: ", transcripts)
             break
         return
-    
-    if model_type == "cnn":
-        model = CNNEncoder()
-    elif model_type == "rnn":
-        model = RNNEncoder()
-    else:
-        raise ValueError("Unknown model type: {model_type}")
     
     model = WrapEncoder(model)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
