@@ -2,11 +2,14 @@
 import os
 import numpy as np
 import torch
+from dotenv import load_dotenv
 from pathlib import Path
 from neural_networks.cnn_encoder import CNNEncoder
 from neural_networks.wrap_encoder import WrapEncoder
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv()
+
+BASE_DIR = Path(os.getenv("BASE_DIR"))
 PROCESSED_DIR = BASE_DIR / "data" / "processed" / "mini_cv"
 NUM_TEST_FILES = 5
 

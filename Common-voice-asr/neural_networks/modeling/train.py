@@ -8,6 +8,8 @@ import typer
 import torch.nn as nn
 import torch.optim as optim
 import pandas as pd
+import os
+from dotenv import load_dotenv
 from rich.progress import Progress
 from torch.utils.data import random_split, DataLoader
 from pathlib import Path
@@ -22,7 +24,8 @@ from neural_networks.config import MODELS_DIR, PROCESSED_DATA_DIR
 from neural_networks.cnn_encoder import CNNEncoder
 from neural_networks.rnn_encoder import RNNEncoder
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+load_dotenv()
+BASE_DIR = Path(os.getenv("BASE_DIR"))
 
 import argparse
 
