@@ -8,3 +8,15 @@ Shape:
 - Inputs_lengths: tuple/sensor of size (N) or (). Represents lengths of inputs, must be <= T. Lengths specified for each sequence to achieve masking
 - Target_lengths: Tuple or tensor of size (N) or (). Represents lengths of targets, specified for each sequence to achieve masking
 - Output: scalar if reduction is 'mean' (default) or 'sum'. (N) if input is batched or () if input is unbatched if reduction is 'none'
+
+# Custom collate_fn in PyTorch
+- custom dataset should inherit Dataset and override the following methods:
+    - __len__ so that len(dataset) returns the size of the dataset. read csv
+    - __getitem__ to support indexing such that dataset[i] can be used to get ith sample. reads the spects
+- custom transformations - preprocessing to fulfill expectation of fixed data size
+    - callable classes rescale, randomcrop, totensor
+- everytime dataset is sampled:
+    - data is read from file on fly
+    - transforms applied on the read data
+    - Since one of the transforms is random, data is augmentated on sampling
+    - collate_fn -- specifies exactly how samples need to be batched
