@@ -77,35 +77,45 @@ import torch.nn.functional as F
 
 # Collate_fn implementation for RNN
 def rnn_collate_fn(batch):
-    spects, transcripts = zip(*batch)
+    spects, transcripts, input_lengths, target_lengths = zip(*batch)
 
-    max_T = max(s.shape[-1] for s in spects)
+    max_T = max(s.shape[2] for s in spects)
     padded_spects = []
-    for s in spects:
-        pad_len = max_T - s.shape[-1]
 
-        padded_s = F.pad(s, pad=(0, pad_len), mode='constant', value=0)
-        padded_spects.append(padded_s)
+    for spect in spects:
+        pad_len = max_T - spect.shape[2]
+        if pad_len > 0:
+            spect = F.pad(spect, (0, pad_len))
+        padded_spects.append(spect)
+    
     batch_tensor = torch.stack(padded_spects)
-    if batch_tensor.dim() == 4:
-        batch_tensor = batch_tensor.squeeze(1)
-    batch_tensor = batch_tensor.permute(0, 2, 1)
-    label_tensor = torch.tensor(transcripts, dtype=torch.long)
-    return batch_tensor, label_tensor
+    batch_tensor = batch_tensor.squeeze(1).permute(0, 2, 1)
+
+    concat_transcripts = torch.cat(transcripts)
+    
+    input_lengths = torch.tensor([s.shape(2) for s in spects], dtype=torch.int32)
+    target_lengths = torch.tensor([len(t) for t in transcripts], dtype=torch.int32)
+
+    return batch_tensor, concat_transcripts, input_lengths, target_lengths
 
 #custom implementation for variable-length spects
 def collate_fn(batch):
-    spects, transcripts = zip(*batch)
+    spects, transcripts, input_lengths, target_lengths = zip(*batch)
 
-    max_T = max(s.shape[-1] for s in spects)
-
+    max_T = max(s.shape[2] for s in spects)
     padded_spects = []
-    for s in spects:
-        pad_len = max_T - s.shape[-1]
 
-        padded_s = F.pad(s, pad=(0, pad_len), mode='constant', value=0)
-        padded_spects.append(padded_s)
+    for spect in spects:
+        pad_len = max_T - spect.shape[2]
+        if pad_len > 0:
+            spect = torch.nn.functional.pad(spect, (0, pad_len))
+        padded_spects.append(spect)
     
     batch_tensor = torch.stack(padded_spects)
-    label_tensor = torch.tensor(transcripts, dtype=torch.long)
-    return batch_tensor, label_tensor
+
+    concat_transcripts = torch.cat(transcripts)
+    
+    input_lengths = torch.tensor([s.shape(2) for s in spects], dtype=torch.int32)
+    target_lengths = torch.tensor([len(t) for t in transcripts], dtype=torch.int32)
+
+    return batch_tensor, concat_transcripts, input_lengths, target_lengths
