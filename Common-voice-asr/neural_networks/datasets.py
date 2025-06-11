@@ -3,6 +3,7 @@ from pathlib import Path
 from loguru import logger
 from tqdm import tqdm
 import typer
+import torch
 
 from neural_networks.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
 
@@ -34,6 +35,7 @@ import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset
 
+
 class MiniCVDataset(Dataset):
     def __init__(self, manifest_path, spect_dir, transform = None):
         self.manifest = pd.read_csv(manifest_path)
@@ -49,14 +51,27 @@ class MiniCVDataset(Dataset):
         spect_path = os.path.join(self.spect_dir, spect_filename)
         spect = np.load(spect_path) 
 
-        spect_tensor = torch.tensor(spect, dtype=torch.float32).unsqueeze(0) 
-
+        spec = torch.tensor(spect, dtype=torch.float32).unsqueeze(0) 
         if self.transform:
-            spect_tensor = self.transform(spect_tensor)
+            spec = self.transform(spec)
 
-        label = int(row['label'])
-        return spect_tensor, label
+        transcript = row['transcript'].upper()
+        char_id_dict = char_to_id()
+        transcript_ids = [char_id_dict[char] for char in transcript]
+        transcript_ids = torch.tensor(transcript_ids, dtype=torch.long)
 
+        input_lengths = torch.tensor([spec.shape[-1]], dtype=torch.int32)
+        target_lengths = torch.tensor([len(transcript_ids)], dtype=torch.int32)
+
+        return spec, transcript_ids, input_lengths, target_lengths
+    
+import string
+
+def char_to_id():
+    dict = {'<blank>' : 0, ' ' : 1}
+    for id, char in enumerate(string.ascii_uppercase, start=2):
+        dict[char] = id
+    return dict
 
 import torch.nn.functional as F
 

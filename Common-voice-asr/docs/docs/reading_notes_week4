@@ -3,4 +3,8 @@ CTC loss
 - Calculates loss between a continuous (unsegmented) time series and a target sequence
 - alignment of input to target is assumed to be “many-to-one”, which limits the length of the target sequence <= input length
 Shape:
-- Log_probs: Tensor of size (T,N,C) where T = input length, N = bat
+- Log_probs: Tensor of size (T,N,C) where T = input length, N = batch size, & C = # classes. Log probability of outputs
+- Targets: Tensor of size (N, S) where S = max target lengths. Represents target sequences, each element is a class index that cannot be blank
+- Inputs_lengths: tuple/sensor of size (N) or (). Represents lengths of inputs, must be <= T. Lengths specified for each sequence to achieve masking
+- Target_lengths: Tuple or tensor of size (N) or (). Represents lengths of targets, specified for each sequence to achieve masking
+- Output: scalar if reduction is 'mean' (default) or 'sum'. (N) if input is batched or () if input is unbatched if reduction is 'none'
