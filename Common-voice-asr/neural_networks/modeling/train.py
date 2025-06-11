@@ -56,7 +56,7 @@ def train(model, train_loader, optimizer, criterion, device, epoch, log_interval
                 outputs = outputs.view(-1, outputs.shape[-1])
                 targets = targets.view(-1)
 
-            loss = criterion(outputs, targets)
+            loss = criterion(outputs, targets) # (log_probs, targets, input_lengths, target_lengths) for CTCLoss
             loss.backward()
             optimizer.step()
 
@@ -85,7 +85,7 @@ def validate(model,val_loader, criterion, device):
                 outputs = outputs.view(-1, outputs.shape[-1])
                 targets = targets.view(-1)
 
-            loss = criterion(outputs,targets)
+            loss = criterion(outputs,targets) 
             losses.append(loss.item())
 
             predictions = outputs.argmax(dim=1)
@@ -143,7 +143,7 @@ def main(check_data: bool = False, model_type: str = "cnn", epochs: int = 3):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CTCLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=0.0001)
 
     writer = SummaryWriter()
