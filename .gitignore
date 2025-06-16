@@ -65,6 +65,11 @@ db.sqlite3-journal
 instance/
 .webassets-cache
 
+# Local data files and training outputs
+Common-voice/data/processed/
+Common-voice/data/raw/
+Common-voice/neural_networks/runs/
+
 # Scrapy stuff:
 .scrapy
 

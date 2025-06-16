@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from dotenv import load_dotenv
 from pathlib import Path
-from neural_networks.rnn_encoder import RNNEncoder
+from neural_networks.rnn_encoder import CEL_RNNEncoder
 from neural_networks.wrap_encoder import WrapEncoder
 
 load_dotenv()
@@ -15,7 +15,7 @@ PROCESSED_DIR = BASE_DIR / "data" / "processed" / "mini_cv"
 NUM_TEST_FILES = 5
 
 def test_single_forward_pass():
-    encoder = RNNEncoder()
+    encoder = CEL_RNNEncoder()
     encoder.eval()
 
     npy_files = [file for file in PROCESSED_DIR.glob("*.npy")]
@@ -36,7 +36,7 @@ def test_single_forward_pass():
 
 
 def test_batch_forward_pass():
-    encoder = RNNEncoder()
+    encoder = CEL_RNNEncoder()
     encoder.eval()
 
     npy_files = [file for file in PROCESSED_DIR.glob("*.npy")][:NUM_TEST_FILES]
@@ -66,7 +66,7 @@ def test_batch_forward_pass():
     assert output.shape[1] == 256, "Output feature dimension does not equal 256"
 
 def test_variable_sequence_lengths():
-    encoder = RNNEncoder()
+    encoder = CEL_RNNEncoder()
     encoder.eval()
     lengths = [80, 120, 160]
     for l in lengths:
@@ -76,8 +76,8 @@ def test_variable_sequence_lengths():
         assert output.shape == (1, 256)
 
 def test_wrapped_encoder_single_forward_pass():
-    encoder = RNNEncoder()
-    wrap_encoder = WrapEncoder(encoder)
+    encoder = CEL_RNNEncoder()
+    wrap_encoder = WrapEncoder(encoder, 10)
     wrap_encoder.eval()
 
     npy_files = [file for file in PROCESSED_DIR.glob("*.npy")]

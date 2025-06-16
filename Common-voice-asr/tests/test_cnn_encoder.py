@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from dotenv import load_dotenv
 from pathlib import Path
-from neural_networks.cnn_encoder import CNNEncoder
+from neural_networks.cnn_encoder import CEL_CNNEncoder
 from neural_networks.wrap_encoder import WrapEncoder
 
 load_dotenv()
@@ -20,7 +20,7 @@ def load_spectogram(path):
     return spect_tensor
 
 def test_single_forward_pass():
-    encoder = CNNEncoder()
+    encoder = CEL_CNNEncoder()
     encoder.eval()
 
     npy_files = [file for file in PROCESSED_DIR.glob("*.npy")][:NUM_TEST_FILES]
@@ -35,7 +35,7 @@ def test_single_forward_pass():
         assert output.shape == (1, 256), f"Unexpected output shape: {output.shape}"
 
 def test_batch_forward_pass():
-    encoder = CNNEncoder()
+    encoder = CEL_CNNEncoder()
     encoder.eval()
 
     npy_files = [file for file in PROCESSED_DIR.glob("*.npy")][:NUM_TEST_FILES]
@@ -63,8 +63,8 @@ def test_batch_forward_pass():
     assert output.shape[1] == 256, "Output feature dimension does not equal 256"
 
 def test_wrapped_encoder_single_forward_pass():
-    encoder = CNNEncoder()
-    wrap_encoder = WrapEncoder(encoder)
+    encoder = CEL_CNNEncoder()
+    wrap_encoder = WrapEncoder(encoder, 10)
     wrap_encoder.eval()
 
     npy_files = [file for file in PROCESSED_DIR.glob("*.npy")]

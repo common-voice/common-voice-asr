@@ -3,7 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import librosa.display
 
-PROCESSED_DIR = "/Users/setongerrity/Desktop/Mozilla/common-voice-asr/Common-voice-asr/data/processed/mini_cv"
+mini=False
+if mini: 
+    PROCESSED_DIR = "/Users/setongerrity/Desktop/Mozilla/common-voice-asr/Common-voice-asr/data/processed/mini_cv"
+else:
+    PROCESSED_DIR = "/Users/setongerrity/Desktop/Mozilla/common-voice-asr/Common-voice-asr/data/processed/full_mini_cv"
 NUM_PLOT = 5
 
 npy_files = [file for file in os.listdir(PROCESSED_DIR) if file.endswith('.npy')][:NUM_PLOT]

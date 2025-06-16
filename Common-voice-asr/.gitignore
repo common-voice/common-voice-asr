@@ -1,5 +1,8 @@
 # Data
-# /data/ - want to commit data in git
+/data/
+
+# Training outputs
+neural_networks/runs
 
 # Mac OS-specific storage files
 .DS_Store
