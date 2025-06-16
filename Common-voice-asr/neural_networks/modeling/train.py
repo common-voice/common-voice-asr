@@ -1,14 +1,17 @@
 # to run: python -m neural_networks.modeling.train (via Common-voice-asr)
 # add --check-data
-# add --model-type cnn --epochs 3
+# add --model_type cnn --epochs 3
+# python -m neural_networks.modeling.train --full_mini --model_type rnn --epochs 5
+# python -m neural_networks.modeling.train --full_mini --model_type cnn --epochs 5
+# python -m neural_networks.modeling.train --full_mini --model_type rnn --epochs 5 --lr 1e-3 --logdir runs/week4_ctc
 
-from loguru import logger
 import torch
-import typer
 import torch.nn as nn
 import torch.optim as optim
 import pandas as pd
+import torch.nn.functional as F
 import os
+import torchaudio
 from dotenv import load_dotenv
 from rich.progress import Progress
 from torch.utils.data import random_split, DataLoader
@@ -17,27 +20,35 @@ from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
 
 from neural_networks.wrap_encoder import WrapEncoder
-from neural_networks.datasets import MiniCVDataset, collate_fn, rnn_collate_fn
+from neural_networks.datasets import CEL_MiniCVDataset, cel_collate_fn, cel_rnn_collate_fn
+from neural_networks.datasets import CTC_MiniCVDataset, ctc_collate_fn, ctc_rnn_collate_fn
 from neural_networks.config import MODELS_DIR, PROCESSED_DATA_DIR
 
-from neural_networks.cnn_encoder import CNNEncoder
-from neural_networks.rnn_encoder import RNNEncoder
+from neural_networks.cnn_encoder import CTC_CNNEncoder, CEL_CNNEncoder
+from neural_networks.rnn_encoder import CTC_RNNEncoder, CEL_RNNEncoder
+from neural_networks.greedy_ctc_decoder import GreedyCTCDecoder
+
+from torch.utils.data import DataLoader
 
 load_dotenv()
 BASE_DIR = Path(os.getenv("BASE_DIR"))
+
+import string
+tokens = ['<blank>', ' '] + list(string.ascii_uppercase + '.' + '!' + '?' + '-' + ',' + '"' + "'" + ':')
 
 import argparse
 
 def parse_command_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--check-data', action='store_true', help='Check if data loads correctly')
+    parser.add_argument('--full_mini', action='store_true', help="Load larger data split from CV Train")
     parser.add_argument('--model_type', choices=['cnn', 'rnn'], required=True, help='Specify which model to use')
     parser.add_argument('--epochs', type=int, required=True, help= "Number of epochs to train")
+    parser.add_argument('--lr', type=float, help="Learning rate")
+    parser.add_argument('--logdir', type=str, required=True, choices=['runs/week3_cnn', 'runs/week3_rnn', 'runs/week4_ctc'], help="Folder to write trains to")
     return parser.parse_args()
 
-app = typer.Typer()
-
-def train(model, train_loader, optimizer, criterion, device, epoch, log_interval):
+def cel_train(model, train_loader, optimizer, criterion, device, epoch, log_interval):
     model.train()
     losses = []
 
@@ -69,7 +80,7 @@ def train(model, train_loader, optimizer, criterion, device, epoch, log_interval
             progress.advance(pbar)
     return sum(losses)/len(losses)
 
-def validate(model,val_loader, criterion, device):
+def cel_validate(model,val_loader, criterion, device):
     model.eval()
     losses = []
     correct = 0
@@ -96,36 +107,155 @@ def validate(model,val_loader, criterion, device):
     accuracy = correct / total if total > 0 else 0
     return avg_loss, accuracy
 
+def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_interval):
+    torch.autograd.set_detect_anomaly(True)
+    model.train()
+    losses = []
+    count = 0
+    total_wer = 0.0
+    decoder = GreedyCTCDecoder(tokens)
 
+    with Progress() as progress:
+        pbar = progress.add_task(f"[green]Epoch {epoch}...", total=len(train_loader))
 
-@app.command()
-def main(check_data: bool = False, model_type: str = "cnn", epochs: int = 3):
+        for batch_idx, (spects, targets, input_lengths, target_lengths) in enumerate(train_loader):
+            spects = spects.to(device)
+            targets = targets.to(device)
+            input_lengths = input_lengths.to(device)
+            target_lengths = target_lengths.to(device)
+            
+            optimizer.zero_grad()
+            outputs = model(spects)
+            outputs = outputs.to(torch.float32)
+            outputs = torch.clamp(outputs, min=-50, max=50)
+
+            log_probs = F.log_softmax(outputs, dim=2)
+            log_probs = log_probs.transpose(0, 1) 
+            max_output_len = log_probs.size(0)
+            input_lengths = torch.clamp(input_lengths, max=max_output_len)
+
+            loss = criterion(log_probs, targets, input_lengths, target_lengths)
+            losses.append(loss.item())
+            
+            hypotheses = decoder(log_probs.transpose(0, 1))
+            references = []
+            start = 0
+            for t_len in target_lengths:
+                end = start + t_len.item()
+                indices = targets[start:end]
+                ref = "".join([tokens[i] for i in indices]).replace("|", " ").strip().split()
+                references.append(ref)
+                start = end
+
+            for ref, hyp in zip(references, hypotheses):
+                total_wer += torchaudio.functional.edit_distance(ref, hyp) / max(len(ref), 1)
+                count += 1
+
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+
+            if batch_idx % log_interval == 0:
+                print(f"Train Epoch: {epoch} [{batch_idx * len(spects)}/{len(train_loader.dataset)} "
+                      f"({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}")
+                
+            progress.advance(pbar)
+
+    avg_loss = sum(losses)/len(losses)
+    avg_wer = total_wer / count if count > 0 else 1.0
+    return avg_loss, avg_wer
+
+def ctc_validate(model,val_loader, criterion, device):
+    model.eval()
+    losses = []
+    count = 0
+    total_wer = 0.0
+    total_cer = 0.0
+    decoder = GreedyCTCDecoder(tokens)
+
+    with torch.no_grad():
+        for spects, targets, input_lengths, target_lengths in val_loader:
+            spects = spects.to(device)
+            targets = targets.to(device)
+            input_lengths = input_lengths.to(device)
+            target_lengths = target_lengths.to(device)
+            
+            outputs = model(spects)
+            log_probs = F.log_softmax(outputs, dim=2)
+            log_probs = log_probs.permute(1,0,2)
+            max_output_len = log_probs.size(0)
+            input_lengths = torch.clamp(input_lengths, max=max_output_len)
+
+            loss = criterion(log_probs, targets, input_lengths, target_lengths) 
+            losses.append(loss.item())
+
+            hypotheses = decoder(log_probs.transpose(0,1))
+            references = []
+            offset = 0
+            for t_len in target_lengths:
+                t_len = t_len.item()
+                indices = targets[offset : offset + t_len]
+                ref = "".join([tokens[i] for i in indices]).replace("|", " ").strip().split()                
+                references.append(ref)
+                offset += t_len
+            for ref, hyp in zip(references, hypotheses):
+                total_wer += torchaudio.functional.edit_distance(ref, hyp) / max(len(ref), 1)
+                total_cer += torchaudio.functional.edit_distance(list(ref), list(hyp)) / max(len(ref), 1)
+                count += 1
+        
+    avg_loss = sum(losses) / len(losses)
+    avg_wer = total_wer / count if count > 0 else 1.0
+    avg_cer = total_cer / count
+
+    return avg_loss, avg_wer, avg_cer
+
+def main(check_data: bool = False, full_mini: bool = False, model_type: str = "cnn", epochs: int = 3, lr: float = 1e-3, logdir: str = 'runs/week4_ctc'):
     manifest_path = BASE_DIR / "data" / "manifest.csv"
     spect_dir = BASE_DIR / "data" / "processed" / "mini_cv"
 
-    log_dir = BASE_DIR / "neural_networks" / "runs" / f"week3_{model_type}"
+    manifest_full_path = os.path.join(BASE_DIR, "data/manifest_full.csv")
+    spect_full_dir = os.path.join(BASE_DIR, "data/processed/full_mini_cv")
 
-    df = pd.read_csv(manifest_path)
-    if 'label' not in df.columns:
-        print("Adding dummy label column to manifest.csv")
-        df['label'] = [i % 10 for i in range(len(df))]
-        df.to_csv(manifest_path, index = False)
+    log_dir = os.path.join("neural_networks", logdir)
+    log_path = os.path.join(BASE_DIR, log_dir)
 
-    dataset = MiniCVDataset(manifest_path, spect_dir)
+    if not full_mini:
+        df = pd.read_csv(manifest_path)
+        if 'label' not in df.columns:
+            print("Adding dummy label column to manifest.csv")
+            df['label'] = [i % 10 for i in range(len(df))]
+            df.to_csv(manifest_path, index = False)
+        dataset = CEL_MiniCVDataset(manifest_path, spect_dir)
+        num_classes = 10
+        apply = True
+        if model_type == "cnn":
+            model = CEL_CNNEncoder()
+            collate = cel_collate_fn
+        elif model_type == "rnn":
+            model = CEL_RNNEncoder()
+            collate = cel_rnn_collate_fn
+        else:
+            raise ValueError(f"Unknown model type: {model_type}")
+    else:
+        df = pd.read_csv(manifest_full_path)
+        dataset = CTC_MiniCVDataset(manifest_full_path, spect_full_dir)
+        num_classes = len(tokens)
+        if model_type == "cnn":
+            model = CTC_CNNEncoder()
+            collate = ctc_collate_fn
+            apply = False
+        elif model_type == "rnn":
+            model = CTC_RNNEncoder()
+            collate = ctc_rnn_collate_fn
+            apply = True
+        else:
+            raise ValueError(f"Unknown model type: {model_type}")
+    
     total_len = len(dataset)
     train_len = int(0.6 * total_len) # 60% for training, 20% for validation, 20% for testing later
     val_len = int(0.2 * total_len)
     test_len = total_len - train_len - val_len
     train_set, val_set, test_set = random_split(dataset, [train_len, val_len, test_len])
-
-    if model_type == "cnn":
-        model = CNNEncoder()
-        collate = collate_fn
-    elif model_type == "rnn":
-        model = RNNEncoder()
-        collate = rnn_collate_fn
-    else:
-        raise ValueError("Unknown model type: {model_type}")
     
     train_loader = DataLoader(train_set, batch_size=4, collate_fn=collate, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=4, collate_fn=collate)
@@ -139,32 +269,53 @@ def main(check_data: bool = False, model_type: str = "cnn", epochs: int = 3):
             break
         return
     
-    model = WrapEncoder(model)
+
+    model = WrapEncoder(model,num_classes, apply)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=0.0001)
+    writer = SummaryWriter(log_dir=log_path)
 
-    writer = SummaryWriter()
+    if full_mini:
+        criterion = nn.CTCLoss(blank=0, zero_infinity=True)
+        optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0.0001)
+        for epoch in range(1, epochs + 1):
+            train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_interval=20)
+            val_loss, val_wer, val_cer = ctc_validate(model,val_loader, criterion, device)
 
-    for epoch in range(1, epochs + 1):
-        train_loss = train(model, train_loader, optimizer, criterion, device, epoch, log_interval=20)
-        val_loss, val_acc = validate(model,val_loader, criterion, device)
+            writer.add_scalar('train/ctc_loss', train_loss, epoch)
+            writer.add_scalar('train/wer', train_wer, epoch)
+            writer.add_scalar('val/ctc_loss', val_loss, epoch)
+            writer.add_scalar('val/wer', val_wer, epoch)
+            writer.add_scalar('val/cer', val_cer, epoch)
+            
+            
+            print(f"\n Epoch {epoch} completed")
+            print(f"Train CTC loss: {train_loss:.4f}")
+            print(f"Train WER: {train_wer:.4f}")
+            print(f"Val CTC loss: {val_loss:.4f}")
+            print(f"Val WER: {val_wer:.4f}")
+            print(f"Val CER: {val_cer:.4f}")
+    else:
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=0.0001)
+        for epoch in range(1, epochs + 1):
+            train_loss = cel_train(model, train_loader, optimizer, criterion, device, epoch, log_interval=20)
+            val_loss, val_acc = cel_validate(model,val_loader, criterion, device)
 
-        writer.add_scalar('Loss/train', train_loss, epoch)
-        writer.add_scalar('Loss/val', val_loss, epoch)
-        writer.add_scalar('Accuracy/val', val_acc, epoch)
-        
-        
-        print(f"\n Epoch {epoch} completed")
-        print(f"Train loss: {train_loss:.4f}")
-        print(f"Val loss: {val_loss:.4f}")
-        print(f"Val accuracy: {val_acc:.4f}")
+            writer.add_scalar('Loss/train', train_loss, epoch)
+            writer.add_scalar('Loss/val', val_loss, epoch)
+            writer.add_scalar('Accuracy/val', val_acc, epoch)
+            
+            
+            print(f"\n Epoch {epoch} completed")
+            print(f"Train loss: {train_loss:.4f}")
+            print(f"Val loss: {val_loss:.4f}")
+            print(f"Val accuracy: {val_acc:.4f}")
+
     writer.flush()
     writer.close()
 
 if __name__ == "__main__":
     args = parse_command_args()
-    main(check_data=args.check_data, model_type=args.model_type, epochs=args.epochs)
-    app()
+    main(check_data=args.check_data, full_mini=args.full_mini, model_type=args.model_type, epochs=args.epochs, lr = args.lr, logdir=args.logdir)
