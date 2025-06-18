@@ -12,6 +12,7 @@ import pandas as pd
 import torch.nn.functional as F
 import os
 import torchaudio
+import wandb
 from dotenv import load_dotenv
 from rich.progress import Progress
 from torch.utils.data import random_split, DataLoader
@@ -45,7 +46,9 @@ def parse_command_args():
     parser.add_argument('--model_type', choices=['cnn', 'rnn'], required=True, help='Specify which model to use')
     parser.add_argument('--epochs', type=int, required=True, help= "Number of epochs to train")
     parser.add_argument('--lr', type=float, help="Learning rate")
-    parser.add_argument('--logdir', type=str, required=True, choices=['runs/week3_cnn', 'runs/week3_rnn', 'runs/week4_ctc'], help="Folder to write trains to")
+    parser.add_argument('--logdir', type=str, required=True, help="Folder to write trains to")
+    parser.add_argument('--batch_size', type=int, default=4, help='Batch size for training')
+    parser.add_argument('--hidden_dim', type=int, default=64, help='Hidden dimension for model')
     return parser.parse_args()
 
 def cel_train(model, train_loader, optimizer, criterion, device, epoch, log_interval):
@@ -209,7 +212,8 @@ def ctc_validate(model,val_loader, criterion, device):
 
     return avg_loss, avg_wer, avg_cer
 
-def main(check_data: bool = False, full_mini: bool = False, model_type: str = "cnn", epochs: int = 3, lr: float = 1e-3, logdir: str = 'runs/week4_ctc'):
+def main(check_data: bool = False, full_mini: bool = False, model_type: str = "cnn", epochs: int = 3, lr: float = 1e-3, 
+         logdir: str = 'runs/week4_ctc', batch_size: int = 4, hidden_dim: int = 64):
     manifest_path = BASE_DIR / "data" / "manifest.csv"
     spect_dir = BASE_DIR / "data" / "processed" / "mini_cv"
 
@@ -241,11 +245,11 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
         dataset = CTC_MiniCVDataset(manifest_full_path, spect_full_dir)
         num_classes = len(tokens)
         if model_type == "cnn":
-            model = CTC_CNNEncoder()
+            model = CTC_CNNEncoder(hidden_dim=hidden_dim)
             collate = ctc_collate_fn
             apply = False
         elif model_type == "rnn":
-            model = CTC_RNNEncoder()
+            model = CTC_RNNEncoder(hidden_size=hidden_dim)
             collate = ctc_rnn_collate_fn
             apply = True
         else:
@@ -257,8 +261,8 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
     test_len = total_len - train_len - val_len
     train_set, val_set, test_set = random_split(dataset, [train_len, val_len, test_len])
     
-    train_loader = DataLoader(train_set, batch_size=4, collate_fn=collate, shuffle=True)
-    val_loader = DataLoader(val_set, batch_size=4, collate_fn=collate)
+    train_loader = DataLoader(train_set, batch_size=batch_size, collate_fn=collate, shuffle=True)
+    val_loader = DataLoader(val_set, batch_size=batch_size, collate_fn=collate)
 
     if check_data:
         for batch in train_loader:
@@ -288,6 +292,16 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
             writer.add_scalar('val/ctc_loss', val_loss, epoch)
             writer.add_scalar('val/wer', val_wer, epoch)
             writer.add_scalar('val/cer', val_cer, epoch)
+
+            if wandb.run:
+                wandb.log({
+                    'epoch': epoch,
+                    'train/ctc_loss': train_loss,
+                    'train/wer': train_wer,
+                    'val/ctc_loss': val_loss,
+                    'val/wer': val_wer,
+                    'val/cer': val_cer,
+                })
             
             
             print(f"\n Epoch {epoch} completed")
@@ -313,9 +327,13 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
             print(f"Val loss: {val_loss:.4f}")
             print(f"Val accuracy: {val_acc:.4f}")
 
+    if wandb.run:
+        wandb.summary['final_val_loss'] = val_loss
+
+
     writer.flush()
     writer.close()
 
 if __name__ == "__main__":
     args = parse_command_args()
-    main(check_data=args.check_data, full_mini=args.full_mini, model_type=args.model_type, epochs=args.epochs, lr = args.lr, logdir=args.logdir)
+    main(check_data=args.check_data, full_mini=args.full_mini, model_type=args.model_type, epochs=args.epochs, lr = args.lr, logdir=args.logdir, batch_size = args.batch_size, hidden_dim=args.hidden_dim)
