@@ -14,6 +14,8 @@ import torch.nn.functional as F
 import os
 import torchaudio
 import wandb
+import tempfile
+import shutil
 from dotenv import load_dotenv
 from rich.progress import Progress
 from torch.utils.data import random_split, DataLoader
@@ -50,6 +52,7 @@ def parse_command_args():
     parser.add_argument('--logdir', type=str, required=True, help="Folder to write trains to")
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size for training')
     parser.add_argument('--hidden_dim', type=int, default=64, help='Hidden dimension for model')
+    parser.add_argument('--test-sweep', action='store_true', help="Testing sweep with small dataset")
     return parser.parse_args()
 
 def cel_train(model, train_loader, optimizer, criterion, device, epoch, log_interval):
@@ -214,7 +217,7 @@ def ctc_validate(model,val_loader, criterion, device):
     return avg_loss, avg_wer, avg_cer
 
 def main(check_data: bool = False, full_mini: bool = False, model_type: str = "cnn", epochs: int = 3, lr: float = 1e-3, 
-         logdir: str = 'runs/week4_ctc', batch_size: int = 4, hidden_dim: int = 64):
+         logdir: str = 'runs/week4_ctc', batch_size: int = 4, hidden_dim: int = 64, test_sweep = False):
     manifest_path = BASE_DIR / "data" / "manifest.csv"
     spect_dir = BASE_DIR / "data" / "processed" / "mini_cv"
 
@@ -272,7 +275,6 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
             print("Transcripts: ", transcripts)
             break
         return
-    
 
     model = WrapEncoder(model,num_classes, apply)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -283,6 +285,22 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
     if full_mini:
         criterion = nn.CTCLoss(blank=0, zero_infinity=True)
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0.0001)
+        if test_sweep:
+                test_df = df.head(5)
+                test_spect_dir = tempfile.mkdtemp()
+                for file in test_df["filename"]:
+                    spect_file = file.replace(".mp3", ".npy")
+                    full_path = os.path.join(spect_full_dir, spect_file)
+                    dest_path = os.path.join(test_spect_dir, spect_file)
+                    shutil.copy(full_path, dest_path)
+                test_manifest = os.path.join(test_spect_dir, "test_manifest.csv")
+                test_df.to_csv(test_manifest, index=False)
+                test_set = CTC_MiniCVDataset(test_manifest, test_spect_dir)
+                test_loader = DataLoader(test_set, batch_size=batch_size, collate_fn=collate)
+                test_loss, test_wer = ctc_train(model, test_loader, optimizer, criterion, device, epochs, log_interval=20)
+                assert wandb.run, "W&B is not running"
+                wandb.log({'epoch': epochs, 'test/loss' : test_loss, 'test/wer' : test_wer })
+                return
         for epoch in range(1, epochs + 1):
             train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_interval=20)
             val_loss, val_wer, val_cer = ctc_validate(model,val_loader, criterion, device)
@@ -341,10 +359,9 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
     if wandb.run:
         wandb.summary['final_val_loss'] = val_loss
     
-
     writer.flush()
     writer.close()
 
 if __name__ == "__main__":
     args = parse_command_args()
-    main(check_data=args.check_data, full_mini=args.full_mini, model_type=args.model_type, epochs=args.epochs, lr = args.lr, logdir=args.logdir, batch_size = args.batch_size, hidden_dim=args.hidden_dim)
+    main(check_data=args.check_data, full_mini=args.full_mini, model_type=args.model_type, epochs=args.epochs, lr = args.lr, logdir=args.logdir, batch_size = args.batch_size, hidden_dim=args.hidden_dim, test_sweep=args.test_sweep)
