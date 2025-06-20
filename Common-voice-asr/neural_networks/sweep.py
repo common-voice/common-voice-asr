@@ -1,6 +1,7 @@
 # Create sweep: wandb sweep Common-voice-asr/neural_networks/configs/week5_sweep.yaml
 # Run sweep agent with: wandb agent username/project_name/project_id
 # python Common-voice-asr/neural_networks/sweep.py
+# python neural_networks/sweep.py
 import wandb
 import os
 import yaml
@@ -20,7 +21,7 @@ def sweep_train():
         with wandb.init():
             config = wandb.config
             run_id = wandb.run.id
-            logdir = os.path.join(BASE_DIR, f"neural_networks/runs/week5_sweep/lr{config.learning_rate}_bs{config.batch_size}_hd{config.hidden_dimension}_run{run_id}")
+            logdir = os.path.join(BASE_DIR, f"neural_networks/runs/week5_sweep/sweep_rnn/lr{config.learning_rate}_bs{config.batch_size}_hd{config.hidden_dimension}_run{run_id}")
             wandb.config.update({"logdir": logdir})
             Path(logdir).mkdir(parents=True, exist_ok=True)
             train(check_data=False, full_mini=config.full_mini, model_type=config.model_type, epochs= config.epochs, lr = config.learning_rate, 
@@ -31,7 +32,7 @@ def sweep_train():
     
 def main():
     sweep_id = wandb.sweep(sweep_config, project="week5_sweep")
-    wandb.agent(sweep_id, sweep_train, count=5)        
+    wandb.agent(sweep_id, sweep_train, count=40)        
 
 if __name__ == "__main__":
     main()

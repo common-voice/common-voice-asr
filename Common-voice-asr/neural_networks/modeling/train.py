@@ -5,6 +5,7 @@
 # python -m neural_networks.modeling.train --full_mini --model_type cnn --epochs 5
 # python -m neural_networks.modeling.train --full_mini --model_type rnn --epochs 5 --lr 1e-3 --logdir runs/week4_ctc
 
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -151,7 +152,7 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
                 start = end
 
             for ref, hyp in zip(references, hypotheses):
-                total_wer += torchaudio.functional.edit_distance(ref, hyp) / max(len(ref), 1)
+                total_wer += min(torchaudio.functional.edit_distance(ref, hyp) / max(len(ref), 1), 1)
                 count += 1
 
             loss.backward()
@@ -202,8 +203,8 @@ def ctc_validate(model,val_loader, criterion, device):
                 references.append(ref)
                 offset += t_len
             for ref, hyp in zip(references, hypotheses):
-                total_wer += torchaudio.functional.edit_distance(ref, hyp) / max(len(ref), 1)
-                total_cer += torchaudio.functional.edit_distance(list(ref), list(hyp)) / max(len(ref), 1)
+                total_wer += min(torchaudio.functional.edit_distance(ref, hyp) / max(len(ref), 1), 1)
+                total_cer += min(torchaudio.functional.edit_distance(list(ref), list(hyp)) / max(len(ref), 1),1)
                 count += 1
         
     avg_loss = sum(losses) / len(losses)
@@ -256,10 +257,9 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
             raise ValueError(f"Unknown model type: {model_type}")
     
     total_len = len(dataset)
-    train_len = int(0.6 * total_len) # 60% for training, 20% for validation, 20% for testing later
-    val_len = int(0.2 * total_len)
-    test_len = total_len - train_len - val_len
-    train_set, val_set, test_set = random_split(dataset, [train_len, val_len, test_len])
+    train_len = int(0.8 * total_len) # 80% for training, 20% for validation
+    val_len = total_len - train_len
+    train_set, val_set= random_split(dataset, [train_len, val_len])
     
     train_loader = DataLoader(train_set, batch_size=batch_size, collate_fn=collate, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, collate_fn=collate)
@@ -303,7 +303,6 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
                     'val/cer': val_cer,
                 })
             
-            
             print(f"\n Epoch {epoch} completed")
             print(f"Train CTC loss: {train_loss:.4f}")
             print(f"Train WER: {train_wer:.4f}")
@@ -320,16 +319,28 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
             writer.add_scalar('Loss/train', train_loss, epoch)
             writer.add_scalar('Loss/val', val_loss, epoch)
             writer.add_scalar('Accuracy/val', val_acc, epoch)
-            
-            
+               
             print(f"\n Epoch {epoch} completed")
             print(f"Train loss: {train_loss:.4f}")
             print(f"Val loss: {val_loss:.4f}")
             print(f"Val accuracy: {val_acc:.4f}")
 
+    save_best = False
+    if save_best:
+        os.makedirs(logdir, exist_ok=True)
+        torch.save({
+        'model_state_dict': model.state_dict(),
+        'config': {
+            'model_type': model_type,
+            'hidden_dim': hidden_dim,
+            'lr': lr,
+            'batch_size': batch_size,
+            'epochs': epochs,
+        } }, os.path.join(log_path, "best_rnn.pth"))
+
     if wandb.run:
         wandb.summary['final_val_loss'] = val_loss
-
+    
 
     writer.flush()
     writer.close()
