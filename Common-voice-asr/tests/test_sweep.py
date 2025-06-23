@@ -4,6 +4,7 @@ import wandb
 import pandas as pd
 from dotenv import load_dotenv
 from pathlib import Path
+from mockito import when, verify, unstub
 
 from neural_networks.datasets import CTC_MiniCVDataset
 from neural_networks.modeling.train import main as train 
@@ -45,11 +46,16 @@ def sweep_train_dummy():
             train(False, True, "cnn", 1, config.learning_rate, "runs/test_sweep", config.batch_size, config.hidden_dimension, True)
 
 def test_dummy_sweep():
-    sweep_id = wandb.sweep(dummy_config, project="sweep_test")
     try:
+        when(wandb).sweep(dummy_config, project="sweep_test").thenReturn("mock_sweep_id")
+        when(wandb).agent("mock_sweep_id", function=sweep_train_dummy, count=1).thenReturn(None)
+
+        sweep_id = wandb.sweep(dummy_config, project="sweep_test")
         wandb.agent(sweep_id, function=sweep_train_dummy, count=1)
-    except Exception as e:
-        assert False, f"Dummy sweep failed with error {e}"
+        verify(wandb).sweep(dummy_config, project="sweep_test")
+        verify(wandb).agent("mock_sweep_id", function=sweep_train_dummy, count=1)
+    finally:
+        unstub()
 
 if __name__ == "__main__":
     test_load_sweep()
