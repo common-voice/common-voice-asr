@@ -1,0 +1,19 @@
+project: week5_sweep
+name: week5_sweep
+method: bayes
+metric:
+  name: val_wer
+  goal: minimize
+parameters:
+  learning_rate: 
+    values: [0.0001, 0.001, 0.0005]
+  batch_size:
+    values: [8, 16, 32, 64]
+  hidden_dimension: 
+    values: [32, 64, 128, 256, 384]
+  epochs: 
+    values: [5]
+  model_type: 
+    values: ["rnn"] # was ["cnn", "rnn"] but want to just run rnn rn
+  full_mini: 
+    values: [True]

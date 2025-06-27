@@ -19,7 +19,7 @@ class GreedyCTCDecoder(torch.nn.Module):
                     tokens.append(self.labels[idx])
                 prev = idx
 
-            joined = "".join(tokens).strip()
+            joined = "".join(tokens).replace("|"," ").strip()
             words = joined.split()
             transcripts.append(words)
         return transcripts

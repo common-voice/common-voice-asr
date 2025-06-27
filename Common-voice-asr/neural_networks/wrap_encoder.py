@@ -6,14 +6,16 @@ class WrapEncoder(nn.Module):
         super().__init__()
         self.encoder = encoder
         self.apply_head = apply_head
-        if apply_head:
-            self.head = nn.Linear(256, num_classes)
-        else:
-            self.head = nn.Identity()
+        self.num_classes = num_classes
 
     def forward(self, x):
         x = self.encoder(x)
-        x = self.head(x)
+        if self.apply_head:
+            feature_dim = x.shape[-1]
+            self.head = nn.Linear(feature_dim, self.num_classes)
+            x = self.head(x)
+        else:
+            self.head = nn.Identity()
         return x
 
 

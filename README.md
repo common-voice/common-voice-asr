@@ -41,4 +41,14 @@ Within common-voice-asr, run:
 - For visualizing the loss & WER metrics documented with each training session:
     tensorboard --logdir Common-voice-asr/neural_networks/runs/week4_ctc
 
-
+# Week 5: Hyperparameter Sweep
+1. Define grid in `configs/week5_sweep.yaml`
+    - Static parameters can be added as a list with only a single value
+    - Method can be bayes, grid, or random. Began with Random for tests then moved to Bayes for fine-tuning on a larger scale
+2. Run neural_networks/sweep.py in terminal:
+    - python neural_networks/sweep.py
+    - Does not require creating sweep or wand agent, it is handled in the code
+        - Although you should create & log into an account with W&B
+3. Analyze using the W&B's graphing & sorting on their website
+4. Retrain best config: see models/best_cnn.pth or models/best_rnn.pth
+    - Can also use log_best.py but replace hyperparameter inputs to train to that of your own best runs

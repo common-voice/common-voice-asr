@@ -3,24 +3,24 @@ import torch.nn.functional as F
 import torch
 
 class CTC_CNNEncoder(nn.Module):
-    def __init__(self, in_channels = 1, num_classes = 36):
+    def __init__(self, in_channels = 1, hidden_dim = 32, num_classes = 36):
         super().__init__()
         self.conv_block1 = nn.Sequential(
-            nn.Conv2d(in_channels, 32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
+            nn.Conv2d(in_channels, hidden_dim, kernel_size=3, padding=1),
+            nn.BatchNorm2d(hidden_dim),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2)
         )
 
         self.conv_block2 = nn.Sequential(
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(hidden_dim, hidden_dim * 2, kernel_size=3, padding=1),
+            nn.BatchNorm2d(hidden_dim * 2),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2)
         )
         self.conv_block3 = nn.Sequential(
-            nn.Conv2d(64, 32, kernel_size=1),
-            nn.BatchNorm2d(32),
+            nn.Conv2d(hidden_dim * 2, hidden_dim, kernel_size=1),
+            nn.BatchNorm2d(hidden_dim),
             nn.ReLU()
         )
         self.classifier = nn.LazyLinear(num_classes)
