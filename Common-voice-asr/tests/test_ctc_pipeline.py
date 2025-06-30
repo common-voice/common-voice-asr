@@ -11,6 +11,7 @@ from neural_networks.datasets import char_to_id
 # run one forward+loss call, and assert loss is a finite scalar.
 # pytest Common-voice-asr/tests/test_ctc_pipeline.py
 
+
 def test_ctc_forward_pass_cnn():
     batch_size = 2
     channels = 1
@@ -38,6 +39,7 @@ def test_ctc_forward_pass_cnn():
     assert torch.isfinite(loss).item(), "CTC loss is not finite"
     assert loss.ndim == 0, "CTC loss should be a scalar"
     print("All tests for CNN Encoder passed.")
+
 
 def test_ctc_forward_pass_rnn():
     batch_size = 2
@@ -67,6 +69,7 @@ def test_ctc_forward_pass_rnn():
     assert torch.isfinite(loss).item(), "CTC loss is not finite"
     assert loss.ndim == 0, "CTC loss should be a scalar"
     print("All tests for RNN Encoder passed.")
+
 
 if __name__ == "__main__":
     test_ctc_forward_pass_cnn()

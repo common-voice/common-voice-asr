@@ -14,6 +14,8 @@ import torchaudio
 import wandb
 import tempfile
 import shutil
+import argparse
+import string
 from dotenv import load_dotenv
 from rich.progress import Progress
 from torch.utils.data import random_split, DataLoader
@@ -35,17 +37,15 @@ from torch.utils.data import DataLoader
 load_dotenv()
 BASE_DIR = Path(os.getenv("BASE_DIR"))
 
-import string
 tokens = ['<blank>', '|', ' '] + list(string.ascii_uppercase + '.' + '!' + '?' + '-' + ',' + '"' + "'" + ':')
 
-import argparse
 
 def parse_command_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--check-data', action='store_true', help='Check if data loads correctly')
     parser.add_argument('--full_mini', action='store_true', help="Load larger data split from CV Train")
     parser.add_argument('--model_type', choices=['cnn', 'rnn'], required=True, help='Specify which model to use')
-    parser.add_argument('--epochs', type=int, required=True, help= "Number of epochs to train")
+    parser.add_argument('--epochs', type=int, required=True, help="Number of epochs to train")
     parser.add_argument('--lr', type=float, help="Learning rate")
     parser.add_argument('--logdir', type=str, required=True, help="Folder to write trains to")
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size for training')
@@ -54,6 +54,7 @@ def parse_command_args():
     parser.add_argument('--lm-weight', type=float, default=3.23, help="Learning model weight for beam search decoder")
     parser.add_argument('--word-score', type=float, default=-0.26, help="Word score for beam search decoder")
     return parser.parse_args()
+
 
 def cel_train(model, train_loader, optimizer, criterion, device, epoch, log_interval):
     model.train()
@@ -87,7 +88,8 @@ def cel_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
             progress.advance(pbar)
     return sum(losses)/len(losses)
 
-def cel_validate(model,val_loader, criterion, device):
+
+def cel_validate(model, val_loader, criterion, device):
     model.eval()
     losses = []
     correct = 0
@@ -103,7 +105,7 @@ def cel_validate(model,val_loader, criterion, device):
                 outputs = outputs.view(-1, outputs.shape[-1])
                 targets = targets.view(-1)
 
-            loss = criterion(outputs,targets)
+            loss = criterion(outputs, targets)
             losses.append(loss.item())
 
             predictions = outputs.argmax(dim=1)
@@ -113,6 +115,7 @@ def cel_validate(model,val_loader, criterion, device):
     avg_loss = sum(losses) / len(losses)
     accuracy = correct / total if total > 0 else 0
     return avg_loss, accuracy
+
 
 def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_interval, decoder):
     torch.autograd.set_detect_anomaly(True)
@@ -173,7 +176,8 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
     avg_wer = total_wer / count if count > 0 else 1.0
     return avg_loss, avg_wer
 
-def ctc_validate(model,val_loader, criterion, device, decoder):
+
+def ctc_validate(model, val_loader, criterion, device, decoder):
     model.eval()
     losses = []
     count = 0
@@ -189,7 +193,7 @@ def ctc_validate(model,val_loader, criterion, device, decoder):
             
             outputs = model(spects)
             log_probs = F.log_softmax(outputs, dim=2)
-            log_probs = log_probs.permute(1,0,2)
+            log_probs = log_probs.permute(1, 0, 2)
             max_output_len = log_probs.size(0)
             input_lengths = torch.clamp(input_lengths, max=max_output_len)
 
@@ -216,9 +220,10 @@ def ctc_validate(model,val_loader, criterion, device, decoder):
 
     return avg_loss, avg_wer, avg_cer
 
+
 def main(check_data: bool = False, full_mini: bool = False, model_type: str = "cnn", epochs: int = 3, lr: float = 1e-3, 
-         logdir: str = 'runs/week4_ctc', batch_size: int = 4, hidden_dim: int = 64, test_sweep = False, 
-         lm_weight = 3.23, word_score = -0.26):
+         logdir: str = 'runs/week4_ctc', batch_size: int = 4, hidden_dim: int = 64, test_sweep: bool = False, 
+         lm_weight: float = 3.23, word_score: float = -0.26):
     manifest_path = BASE_DIR / "data" / "manifest.csv"
     spect_dir = BASE_DIR / "data" / "processed" / "mini_cv"
 
@@ -261,9 +266,9 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
             raise ValueError(f"Unknown model type: {model_type}")
     
     total_len = len(dataset)
-    train_len = int(0.8 * total_len) # 80% for training, 20% for validation
+    train_len = int(0.8 * total_len) #  80% for training, 20% for validation
     val_len = total_len - train_len
-    train_set, val_set= random_split(dataset, [train_len, val_len])
+    train_set, val_set = random_split(dataset, [train_len, val_len])
     
     train_loader = DataLoader(train_set, batch_size=batch_size, collate_fn=collate, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, collate_fn=collate)
@@ -277,7 +282,7 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
             break
         return
 
-    model = WrapEncoder(model,num_classes, apply)
+    model = WrapEncoder(model, num_classes, apply)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
@@ -292,24 +297,24 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
         else:
             decoder = beam_search_decoder(tokens, lm_weight, word_score)
         if test_sweep:
-                test_df = df.head(5)
-                test_spect_dir = tempfile.mkdtemp()
-                for file in test_df["filename"]:
-                    spect_file = file.replace(".mp3", ".npy")
-                    full_path = os.path.join(spect_full_dir, spect_file)
-                    dest_path = os.path.join(test_spect_dir, spect_file)
-                    shutil.copy(full_path, dest_path)
-                test_manifest = os.path.join(test_spect_dir, "test_manifest.csv")
-                test_df.to_csv(test_manifest, index=False)
-                test_set = CTC_MiniCVDataset(test_manifest, test_spect_dir)
-                test_loader = DataLoader(test_set, batch_size=batch_size, collate_fn=collate)
-                test_loss, test_wer = ctc_train(model, test_loader, optimizer, criterion, device, epochs, log_interval=20)
-                assert wandb.run, "W&B is not running"
-                wandb.log({'epoch': epochs, 'test/loss' : test_loss, 'test/wer' : test_wer })
-                return
+            test_df = df.head(5)
+            test_spect_dir = tempfile.mkdtemp()
+            for file in test_df["filename"]:
+                spect_file = file.replace(".mp3", ".npy")
+                full_path = os.path.join(spect_full_dir, spect_file)
+                dest_path = os.path.join(test_spect_dir, spect_file)
+                shutil.copy(full_path, dest_path)
+            test_manifest = os.path.join(test_spect_dir, "test_manifest.csv")
+            test_df.to_csv(test_manifest, index=False)
+            test_set = CTC_MiniCVDataset(test_manifest, test_spect_dir)
+            test_loader = DataLoader(test_set, batch_size=batch_size, collate_fn=collate)
+            test_loss, test_wer = ctc_train(model, test_loader, optimizer, criterion, device, epochs, log_interval=20)
+            assert wandb.run, "W&B is not running"
+            wandb.log({'epoch': epochs, 'test/loss': test_loss, 'test/wer': test_wer})
+            return
         for epoch in range(1, epochs + 1):
             train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_interval=20, decoder=decoder)
-            val_loss, val_wer, val_cer = ctc_validate(model,val_loader, criterion, device, decoder)
+            val_loss, val_wer, val_cer = ctc_validate(model, val_loader, criterion, device, decoder)
 
             writer.add_scalar('train/ctc_loss', train_loss, epoch)
             writer.add_scalar('train/wer', train_wer, epoch)
@@ -338,7 +343,7 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
         optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=0.0001)
         for epoch in range(1, epochs + 1):
             train_loss = cel_train(model, train_loader, optimizer, criterion, device, epoch, log_interval=20)
-            val_loss, val_acc = cel_validate(model,val_loader, criterion, device)
+            val_loss, val_acc = cel_validate(model, val_loader, criterion, device)
 
             writer.add_scalar('Loss/train', train_loss, epoch)
             writer.add_scalar('Loss/val', val_loss, epoch)
@@ -360,7 +365,7 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
             'lr': lr,
             'batch_size': batch_size,
             'epochs': epochs,
-        } }, os.path.join(log_path, "best_rnn.pth"))
+        }}, os.path.join(log_path, "best_rnn.pth"))
 
     if wandb.run:
         wandb.summary['final_val_loss'] = val_loss
@@ -368,8 +373,9 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
     writer.flush()
     writer.close()
 
+
 if __name__ == "__main__":
     args = parse_command_args()
-    main(check_data=args.check_data, full_mini=args.full_mini, model_type=args.model_type, epochs=args.epochs, lr = args.lr, 
-         logdir=args.logdir, batch_size = args.batch_size, hidden_dim=args.hidden_dim, test_sweep=args.test_sweep,
-         lm_weight=args.lm_weight, word_score=args.word_score)
+    main(args.check_data, args.full_mini, args.model_type, args.epochs, args.lr, 
+         args.logdir, args.batch_size, args.hidden_dim, args.test_sweep,
+         args.lm_weight, args.word_score)

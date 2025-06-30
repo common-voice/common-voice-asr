@@ -1,6 +1,8 @@
 # https://docs.pytorch.org/audio/main/tutorials/asr_inference_with_ctc_decoder_tutorial.html
 # https://pytorch.org/blog/fast-beam-search-decoding-in-pytorch-with-torchaudio-and-flashlight-text/
+# run from Common-voice-asr
 # python -m neural_networks.modeling.train --full_mini --model_type rnn --epochs 5 --lr 1e-3 --logdir runs/week6_beam 
+# python -m neural_networks.modeling.train --full_mini --model_type cnn --epochs 5 --lr 1e-3 --logdir runs/week6_beam
 # python -m neural_networks.modeling.train --full_mini --model_type rnn --epochs 5 --lr 1e-3 --logdir runs/week6_beam --lm-weight 0 --word-score 0
 import os
 from torchaudio.models.decoder import ctc_decoder

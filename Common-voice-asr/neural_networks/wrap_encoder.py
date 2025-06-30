@@ -1,8 +1,8 @@
 import torch.nn as nn
-import torch.nn.functional as F
+
 
 class WrapEncoder(nn.Module):
-    def __init__(self, encoder: nn.Module, num_classes: int, apply_head = True):
+    def __init__(self, encoder: nn.Module, num_classes: int, apply_head=True):
         super().__init__()
         self.encoder = encoder
         self.apply_head = apply_head

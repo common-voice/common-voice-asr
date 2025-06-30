@@ -13,11 +13,13 @@ BASE_DIR = Path(os.getenv("BASE_DIR"))
 PROCESSED_DIR = BASE_DIR / "data" / "processed" / "mini_cv"
 NUM_TEST_FILES = 5
 
+
 def load_spectogram(path):
     spect = np.load(path)
     assert spect.shape[0] == 80, f"Expected 80 mel bands, got {spect.shape[0]}"
     spect_tensor = torch.tensor(spect, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
     return spect_tensor
+
 
 def test_single_forward_pass():
     encoder = CEL_CNNEncoder()
@@ -33,6 +35,7 @@ def test_single_forward_pass():
             output = encoder(input_tensor)
         
         assert output.shape == (1, 256), f"Unexpected output shape: {output.shape}"
+
 
 def test_batch_forward_pass():
     encoder = CEL_CNNEncoder()
@@ -51,7 +54,7 @@ def test_batch_forward_pass():
     padded_spects = []
     for spect in tensors:
         pad_width = max_width - spect.shape[1]
-        padded = np.pad(spect, ((0,0), (0, pad_width)), mode='constant')
+        padded = np.pad(spect, ((0, 0), (0, pad_width)), mode='constant')
         padded_spects.append(torch.tensor(padded, dtype=torch.float32).unsqueeze(0))
 
     batch_tensor = torch.stack(padded_spects)
@@ -61,6 +64,7 @@ def test_batch_forward_pass():
     
     assert output.shape[0] == len(npy_files), "Batch size does not match # files"
     assert output.shape[1] == 256, "Output feature dimension does not equal 256"
+
 
 def test_wrapped_encoder_single_forward_pass():
     encoder = CEL_CNNEncoder()
@@ -80,9 +84,6 @@ def test_wrapped_encoder_single_forward_pass():
         output = wrap_encoder(tensor)
 
     assert output.shape == (1, 10)
-
-
-
 
 
 if __name__ == "__main__":
