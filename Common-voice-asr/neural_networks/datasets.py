@@ -37,7 +37,7 @@ class CTC_MiniCVDataset(Dataset):
 
         return spec, transcript_ids, input_lengths, target_lengths
 
-tokens = ['<blank>', ' '] + list(string.ascii_uppercase + '.' + '!' + '?' + '-' + ',' + '"' + "'" + ':')
+tokens = ['<blank>', '|', ' '] + list(string.ascii_uppercase + '.' + '!' + '?' + '-' + ',' + '"' + "'" + ':')
 char2idx = {c: i for i, c in enumerate(tokens)}
 def tokenize(text):
     return [char2idx[c] for c in text.upper() if c in char2idx]

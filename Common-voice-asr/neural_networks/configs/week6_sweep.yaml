@@ -1,0 +1,23 @@
+project: week6_beam
+name: week6_beam
+method: bayes
+metric:
+  name: val_wer
+  goal: minimize
+parameters:
+  learning_rate: 
+    values: [0.0001, 0.001, 0.0005]
+  batch_size:
+    values: [8, 16, 32, 64]
+  hidden_dimension: 
+    values: [32, 64, 128, 256, 384]
+  epochs: 
+    values: [5]
+  model_type: 
+    values: ["rnn"]
+  full_mini: 
+    values: [True]
+  lm_weight:
+    values: [0.25, 0.5, 1.0, 2.0, 3.23]
+  word_score: 
+    values: [-1.0, -0.52, -0.26, -0.01]

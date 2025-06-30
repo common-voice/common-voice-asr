@@ -4,8 +4,6 @@
 # python -m neural_networks.modeling.train --full_mini --model_type rnn --epochs 5
 # python -m neural_networks.modeling.train --full_mini --model_type cnn --epochs 5
 # python -m neural_networks.modeling.train --full_mini --model_type rnn --epochs 5 --lr 1e-3 --logdir runs/week4_ctc
-
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -20,7 +18,6 @@ from dotenv import load_dotenv
 from rich.progress import Progress
 from torch.utils.data import random_split, DataLoader
 from pathlib import Path
-
 from torch.utils.tensorboard import SummaryWriter
 
 from neural_networks.wrap_encoder import WrapEncoder
@@ -31,6 +28,7 @@ from neural_networks.config import MODELS_DIR, PROCESSED_DATA_DIR
 from neural_networks.cnn_encoder import CTC_CNNEncoder, CEL_CNNEncoder
 from neural_networks.rnn_encoder import CTC_RNNEncoder, CEL_RNNEncoder
 from neural_networks.greedy_ctc_decoder import GreedyCTCDecoder
+from neural_networks.beam_search_decoder import beam_search_decoder
 
 from torch.utils.data import DataLoader
 
@@ -38,7 +36,7 @@ load_dotenv()
 BASE_DIR = Path(os.getenv("BASE_DIR"))
 
 import string
-tokens = ['<blank>', ' '] + list(string.ascii_uppercase + '.' + '!' + '?' + '-' + ',' + '"' + "'" + ':')
+tokens = ['<blank>', '|', ' '] + list(string.ascii_uppercase + '.' + '!' + '?' + '-' + ',' + '"' + "'" + ':')
 
 import argparse
 
@@ -53,6 +51,8 @@ def parse_command_args():
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size for training')
     parser.add_argument('--hidden_dim', type=int, default=64, help='Hidden dimension for model')
     parser.add_argument('--test-sweep', action='store_true', help="Testing sweep with small dataset")
+    parser.add_argument('--lm-weight', type=float, default=3.23, help="Learning model weight for beam search decoder")
+    parser.add_argument('--word-score', type=float, default=-0.26, help="Word score for beam search decoder")
     return parser.parse_args()
 
 def cel_train(model, train_loader, optimizer, criterion, device, epoch, log_interval):
@@ -114,13 +114,12 @@ def cel_validate(model,val_loader, criterion, device):
     accuracy = correct / total if total > 0 else 0
     return avg_loss, accuracy
 
-def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_interval):
+def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_interval, decoder):
     torch.autograd.set_detect_anomaly(True)
     model.train()
     losses = []
     count = 0
     total_wer = 0.0
-    decoder = GreedyCTCDecoder(tokens)
 
     with Progress() as progress:
         pbar = progress.add_task(f"[green]Epoch {epoch}...", total=len(train_loader))
@@ -143,7 +142,6 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
 
             loss = criterion(log_probs, targets, input_lengths, target_lengths)
             losses.append(loss.item())
-            
             hypotheses = decoder(log_probs.transpose(0, 1))
             references = []
             start = 0
@@ -155,6 +153,9 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
                 start = end
 
             for ref, hyp in zip(references, hypotheses):
+                if batch_idx == 0:
+                    print("Ref", ref)
+                    print("Hypo:", hyp)
                 total_wer += min(torchaudio.functional.edit_distance(ref, hyp) / max(len(ref), 1), 1)
                 count += 1
 
@@ -172,13 +173,12 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
     avg_wer = total_wer / count if count > 0 else 1.0
     return avg_loss, avg_wer
 
-def ctc_validate(model,val_loader, criterion, device):
+def ctc_validate(model,val_loader, criterion, device, decoder):
     model.eval()
     losses = []
     count = 0
     total_wer = 0.0
     total_cer = 0.0
-    decoder = GreedyCTCDecoder(tokens)
 
     with torch.no_grad():
         for spects, targets, input_lengths, target_lengths in val_loader:
@@ -196,7 +196,7 @@ def ctc_validate(model,val_loader, criterion, device):
             loss = criterion(log_probs, targets, input_lengths, target_lengths) 
             losses.append(loss.item())
 
-            hypotheses = decoder(log_probs.transpose(0,1))
+            hypotheses = decoder(log_probs.transpose(0, 1))
             references = []
             offset = 0
             for t_len in target_lengths:
@@ -217,11 +217,12 @@ def ctc_validate(model,val_loader, criterion, device):
     return avg_loss, avg_wer, avg_cer
 
 def main(check_data: bool = False, full_mini: bool = False, model_type: str = "cnn", epochs: int = 3, lr: float = 1e-3, 
-         logdir: str = 'runs/week4_ctc', batch_size: int = 4, hidden_dim: int = 64, test_sweep = False):
+         logdir: str = 'runs/week4_ctc', batch_size: int = 4, hidden_dim: int = 64, test_sweep = False, 
+         lm_weight = 3.23, word_score = -0.26):
     manifest_path = BASE_DIR / "data" / "manifest.csv"
     spect_dir = BASE_DIR / "data" / "processed" / "mini_cv"
 
-    manifest_full_path = os.path.join(BASE_DIR, "data/manifest_full.csv")
+    manifest_full_path = os.path.join(BASE_DIR, "data/cleaned_manifest.csv")
     spect_full_dir = os.path.join(BASE_DIR, "data/processed/full_mini_cv")
 
     log_dir = os.path.join("neural_networks", logdir)
@@ -285,6 +286,11 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
     if full_mini:
         criterion = nn.CTCLoss(blank=0, zero_infinity=True)
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0.0001)
+        greedy = False
+        if greedy:
+            decoder = GreedyCTCDecoder(tokens)
+        else:
+            decoder = beam_search_decoder(tokens, lm_weight, word_score)
         if test_sweep:
                 test_df = df.head(5)
                 test_spect_dir = tempfile.mkdtemp()
@@ -302,8 +308,8 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
                 wandb.log({'epoch': epochs, 'test/loss' : test_loss, 'test/wer' : test_wer })
                 return
         for epoch in range(1, epochs + 1):
-            train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_interval=20)
-            val_loss, val_wer, val_cer = ctc_validate(model,val_loader, criterion, device)
+            train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_interval=20, decoder=decoder)
+            val_loss, val_wer, val_cer = ctc_validate(model,val_loader, criterion, device, decoder)
 
             writer.add_scalar('train/ctc_loss', train_loss, epoch)
             writer.add_scalar('train/wer', train_wer, epoch)
@@ -364,4 +370,6 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
 
 if __name__ == "__main__":
     args = parse_command_args()
-    main(check_data=args.check_data, full_mini=args.full_mini, model_type=args.model_type, epochs=args.epochs, lr = args.lr, logdir=args.logdir, batch_size = args.batch_size, hidden_dim=args.hidden_dim, test_sweep=args.test_sweep)
+    main(check_data=args.check_data, full_mini=args.full_mini, model_type=args.model_type, epochs=args.epochs, lr = args.lr, 
+         logdir=args.logdir, batch_size = args.batch_size, hidden_dim=args.hidden_dim, test_sweep=args.test_sweep,
+         lm_weight=args.lm_weight, word_score=args.word_score)
