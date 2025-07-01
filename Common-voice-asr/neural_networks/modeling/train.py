@@ -209,7 +209,7 @@ def ctc_validate(model, val_loader, criterion, device, decoder):
                 total_wer += min(torchaudio.functional.edit_distance(ref, hyp) / max(len(ref), 1), 1)
                 total_cer += min(torchaudio.functional.edit_distance(list(ref), list(hyp)) / max(len(ref), 1), 1)
                 count += 1
-  
+
     avg_loss = sum(losses) / len(losses)
     avg_wer = total_wer / count if count > 0 else 1.0
     avg_cer = total_cer / count
@@ -329,7 +329,8 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
     else:
         manifest_path = BASE_DIR / "data" / "manifest.csv"
         spect_dir = BASE_DIR / "data" / "processed" / "mini_cv"
-    df, dataset, num_classes, apply, model, collate = setup_encoder_and_data(full_mini, manifest_path, spect_dir, model_type, hidden_dim)
+    df, dataset, num_classes, apply, model, collate = setup_encoder_and_data(full_mini,
+                                                                             manifest_path, spect_dir, model_type, hidden_dim)
 
     total_len = len(dataset)
     train_len = int(0.8 * total_len)  # 80% for training, 20% for validation
@@ -375,10 +376,9 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
     save_best = False
     if save_best:
         os.makedirs(logdir, exist_ok=True)
-        torch.save({
-        'model_state_dict': model.state_dict(), 'config': 
-        {'model_type': model_type, 'hidden_dim': hidden_dim, 'lr': lr, 'batch_size': batch_size, 'epochs': epochs}}, 
-        os.path.join(log_path, "best_rnn.pth"))
+        torch.save({'model_state_dict': model.state_dict(), 'config':
+                    {'model_type': model_type, 'hidden_dim': hidden_dim, 'lr': lr, 'batch_size': batch_size, 'epochs': epochs}},
+                    os.path.join(log_path, "best_rnn.pth"))
 
     if wandb.run:
         wandb.summary['final_val_wer'] = val_wer
