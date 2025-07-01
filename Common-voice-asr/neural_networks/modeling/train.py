@@ -376,9 +376,17 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
     save_best = False
     if save_best:
         os.makedirs(logdir, exist_ok=True)
-        torch.save({'model_state_dict': model.state_dict(), 'config':
-                    {'model_type': model_type, 'hidden_dim': hidden_dim, 'lr': lr, 'batch_size': batch_size, 'epochs': epochs}},
-                    os.path.join(log_path, "best_rnn.pth"))
+        torch.save(
+            {'model_state_dict': model.state_dict(), 'config': {
+                'model_type': model_type,
+                'hidden_dim': hidden_dim,
+                'lr': lr,
+                'batch_size': batch_size,
+                'epochs': epochs,
+                },
+            },
+            os.path.join(log_path, "best_rnn.pth")
+    )
 
     if wandb.run:
         wandb.summary['final_val_wer'] = val_wer
