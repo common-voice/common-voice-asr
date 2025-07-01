@@ -17,6 +17,7 @@ N_MELS = 80
 def parse_command_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--full_mini', action='store_true', help='Load full mini dataset')
+    parser.add_argument('--full', action='store_true', help='Load entire dataset')
     return parser.parse_args()
 
 
@@ -40,6 +41,8 @@ def main(full_mini: bool = False):
     if full_mini:
         raw_audio_dir = os.path.join(BASE_DIR, "data/raw/full_mini_cv")
         output_dir = os.path.join(BASE_DIR, "data/processed/full_mini_cv")
+    elif full:
+        raw_audio_dir = 'cv-corpus-22.0-2025-06-20'
     else:
         raw_audio_dir = os.path.join(BASE_DIR, "data/raw/mini_cv")
         output_dir = os.path.join(BASE_DIR, "data/processed/mini_cv")

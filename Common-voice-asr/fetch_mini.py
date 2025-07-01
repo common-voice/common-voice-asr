@@ -7,6 +7,8 @@ import argparse
 from dotenv import load_dotenv
 from pathlib import Path
 
+#python -m fetch_mini.py --corpus
+
 load_dotenv()
 BASE_DIR = Path(os.getenv("BASE_DIR"))
 
@@ -14,6 +16,7 @@ BASE_DIR = Path(os.getenv("BASE_DIR"))
 def parse_command_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--full_mini', action='store_true', help='Fetch full mini dataset')
+    parser.add_argument('--corpus', action='store_true', help='Fetch corpus dataset, split into test & train')
     return parser.parse_args()
 
 
@@ -31,6 +34,13 @@ MANIFEST_FULL_PATH = os.path.join(BASE_DIR, "data/manifest_full.csv")
 
 transcripts_frame_21 = pd.read_csv(TRANSCRIPTS_FILE_21, sep="\t")
 transcripts_frame_20 = pd.read_csv(TRANSCRIPTS_FILE_20, sep="\t")
+
+DATA_DIR_CORPUS = 'cv-corpus-22.0-2025-06-20/en'
+TRANSCRIPTS_FILE_TRAIN = os.path.join(DATA_DIR_CORPUS, 'train.tsv')
+DURATIONS_FILE = os.path.join(DATA_DIR_CORPUS, 'clip_durations.tsv')
+CLIPS_DIR_CORPUS =  os.path.join(DATA_DIR_CORPUS, "clips")
+OUTPUT_DIR_TRAIN = os.path.join(BASE_DIR, 'data/raw/train/corpus_cv')
+MANIFEST_TRAIN_PATH = os.path.join(BASE_DIR, 'data/manifest_train.csv')
 
 
 def fetch_full_mini():
@@ -101,13 +111,43 @@ def fetch_mini():
                 print(f"Warning: {filename} not found")
 
 
-def main(full_mini: bool = False):
+def fetch_corpus(manifest_path, transcripts_file, durations_file, clips_dir, output_dir):
+    transcripts_frame = pd.read_csv(transcripts_file, sep="\t")
+    durations_frame = pd.read_csv(durations_file, sep="\t")
+    durations_frame.rename(columns={'clip': 'path'}, inplace=True)
+    
+    merged_frame = pd.merge(transcripts_frame, durations_frame, on='path', how='inner')
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
+    with open(manifest_path, 'w', newline='', encoding='utf-8') as manifest_file:
+        writer = csv.writer(manifest_file)
+        writer.writerow(['filename', 'transcript', 'duration'])
+
+        for idx, row in merged_frame.iterrows():
+            filename = row['path']
+            sentence = row['sentence']
+            duration_sec = round(row['duration[ms]'] / 1000.0, 3)
+
+            og_audio_path = os.path.join(clips_dir, filename)
+            dest_audio_path = os.path.join(output_dir, filename)
+
+            if os.path.exists(og_audio_path):
+                shutil.copy(og_audio_path, dest_audio_path)
+                writer.writerow([filename, sentence, duration_sec])
+            else:
+                print(f"Warning: {filename} not found")
+    
+
+def main(full_mini: bool = False, corpus: bool = False):
     if full_mini:
         fetch_full_mini()
+    elif corpus:
+        fetch_corpus(MANIFEST_TRAIN_PATH, TRANSCRIPTS_FILE_TRAIN, DURATIONS_FILE, CLIPS_DIR_CORPUS, OUTPUT_DIR_TRAIN)
     else:
         fetch_mini()
 
 
 if __name__ == "__main__":
     args = parse_command_args()
-    main(full_mini=args.full_mini)
+    main(full_mini=args.full_mini, corpus=args.corpus)
