@@ -55,7 +55,6 @@ class CEL_CNNEncoder(nn.Module):
         self.fc = nn.Linear(64, 256)
         self.output_size = 256
 
-
     def forward(self, x):
         x = self.conv_block1(x)
         x = self.conv_block2(x)

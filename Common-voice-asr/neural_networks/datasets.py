@@ -147,7 +147,7 @@ def cel_collate_fn(batch):
 
         padded_s = F.pad(s, pad=(0, pad_len), mode='constant', value=0)
         padded_spects.append(padded_s)
-    
+
     batch_tensor = torch.stack(padded_spects)
     label_tensor = torch.tensor(transcripts, dtype=torch.long)
     return batch_tensor, label_tensor

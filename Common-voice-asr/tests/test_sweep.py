@@ -32,11 +32,11 @@ def test_hyperparameter_presence():
     parameters = sweep_config["parameters"]
     for param_name, param_vals in parameters.items():
         assert isinstance(param_vals, dict), f"{param_name} should be a dictionary with the format values : [val1, val2]"
-        assert any(key in param_vals and param_vals[key] not in ([], None) 
+        assert any(key in param_vals and param_vals[key] not in ([], None)
                    for key in ["values"]), f"{param_name} must specify values"
 
 
-dummy_config = {"method": "random", "metric": {"name": "val/wer", "goal": "minimize"}, "parameters": 
+dummy_config = {"method": "random", "metric": {"name": "val/wer", "goal": "minimize"}, "parameters":
                 {"learning_rate": {"values": [0.0001]}, "batch_size": {"values": [4]}, "hidden_dimension": {"values": [32]}}}
 
 

@@ -209,7 +209,7 @@ def ctc_validate(model, val_loader, criterion, device, decoder):
                 total_wer += min(torchaudio.functional.edit_distance(ref, hyp) / max(len(ref), 1), 1)
                 total_cer += min(torchaudio.functional.edit_distance(list(ref), list(hyp)) / max(len(ref), 1), 1)
                 count += 1
-        
+  
     avg_loss = sum(losses) / len(losses)
     avg_wer = total_wer / count if count > 0 else 1.0
     avg_cer = total_cer / count
@@ -269,6 +269,53 @@ def test_sweep(df, spect_dir, batch_size, collate, model, optimizer, criterion, 
     wandb.log({'epoch': epochs, 'test/loss': test_loss, 'test/wer': test_wer})
 
 
+def run_ctc(model, epochs, train_loader, val_loader, optimizer, criterion, device, decoder, log_interval, writer):
+    min_val_wer = 1.0
+    for epoch in range(1, epochs + 1):
+        train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_interval, decoder)
+        val_loss, val_wer, val_cer = ctc_validate(model, val_loader, criterion, device, decoder)
+        writer.add_scalar('train/ctc_loss', train_loss, epoch)
+        writer.add_scalar('train/wer', train_wer, epoch)
+        writer.add_scalar('val/ctc_loss', val_loss, epoch)
+        writer.add_scalar('val/wer', val_wer, epoch)
+        writer.add_scalar('val/cer', val_cer, epoch)
+
+        if wandb.run:
+            wandb.log({
+                'epoch': epoch,
+                'train/ctc_loss': train_loss,
+                'train/wer': train_wer,
+                'val/ctc_loss': val_loss,
+                'val/wer': val_wer,
+                'val/cer': val_cer,
+                })
+
+        min_val_wer = min(min_val_wer, val_wer)
+        print(f"\n Epoch {epoch} completed")
+        print(f"Train CTC loss: {train_loss:.4f}")
+        print(f"Train WER: {train_wer:.4f}")
+        print(f"Val CTC loss: {val_loss:.4f}")
+        print(f"Val WER: {val_wer:.4f}")
+        print(f"Val CER: {val_cer:.4f}")
+
+    return min_val_wer
+
+
+def run_cel(epochs, model, train_loader, val_loader, optimizer, criterion, device, log_interval, writer):
+    for epoch in range(1, epochs + 1):
+        train_loss = cel_train(model, train_loader, optimizer, criterion, device, epoch, log_interval)
+        val_loss, val_acc = cel_validate(model, val_loader, criterion, device)
+
+        writer.add_scalar('Loss/train', train_loss, epoch)
+        writer.add_scalar('Loss/val', val_loss, epoch)
+        writer.add_scalar('Accuracy/val', val_acc, epoch)
+
+        print(f"\n Epoch {epoch} completed")
+        print(f"Train loss: {train_loss:.4f}")
+        print(f"Val loss: {val_loss:.4f}")
+        print(f"Val accuracy: {val_acc:.4f}")
+
+
 def main(check_data: bool = False, full_mini: bool = False, model_type: str = "cnn", epochs: int = 3, lr: float = 1e-3,
          logdir: str = 'runs/week4_ctc', batch_size: int = 4, hidden_dim: int = 64, test_sweep: bool = False,
          lm_weight: float = 3.23, word_score: float = -0.26):
@@ -319,47 +366,11 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
         if test_sweep:
             test_sweep(df, spect_dir, batch_size, collate, model, optimizer, criterion, device, epochs, log_interval)
             return
-        for epoch in range(1, epochs + 1):
-            train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_interval, decoder)
-            val_loss, val_wer, val_cer = ctc_validate(model, val_loader, criterion, device, decoder)
-
-            writer.add_scalar('train/ctc_loss', train_loss, epoch)
-            writer.add_scalar('train/wer', train_wer, epoch)
-            writer.add_scalar('val/ctc_loss', val_loss, epoch)
-            writer.add_scalar('val/wer', val_wer, epoch)
-            writer.add_scalar('val/cer', val_cer, epoch)
-
-            if wandb.run:
-                wandb.log({
-                    'epoch': epoch,
-                    'train/ctc_loss': train_loss,
-                    'train/wer': train_wer,
-                    'val/ctc_loss': val_loss,
-                    'val/wer': val_wer,
-                    'val/cer': val_cer,
-                })
-
-            print(f"\n Epoch {epoch} completed")
-            print(f"Train CTC loss: {train_loss:.4f}")
-            print(f"Train WER: {train_wer:.4f}")
-            print(f"Val CTC loss: {val_loss:.4f}")
-            print(f"Val WER: {val_wer:.4f}")
-            print(f"Val CER: {val_cer:.4f}")
+        val_wer = run_ctc(model, epochs, train_loader, val_loader, optimizer, criterion, device, decoder, log_interval, writer)
     else:
         criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=0.0001)
-        for epoch in range(1, epochs + 1):
-            train_loss = cel_train(model, train_loader, optimizer, criterion, device, epoch, log_interval)
-            val_loss, val_acc = cel_validate(model, val_loader, criterion, device)
-
-            writer.add_scalar('Loss/train', train_loss, epoch)
-            writer.add_scalar('Loss/val', val_loss, epoch)
-            writer.add_scalar('Accuracy/val', val_acc, epoch)
-   
-            print(f"\n Epoch {epoch} completed")
-            print(f"Train loss: {train_loss:.4f}")
-            print(f"Val loss: {val_loss:.4f}")
-            print(f"Val accuracy: {val_acc:.4f}")
+        run_cel(epochs, model, train_loader, val_loader, optimizer, criterion, device, log_interval, writer)
 
     save_best = False
     if save_best:
@@ -370,7 +381,7 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
         os.path.join(log_path, "best_rnn.pth"))
 
     if wandb.run:
-        wandb.summary['final_val_loss'] = val_loss
+        wandb.summary['final_val_wer'] = val_wer
 
     writer.flush()
     writer.close()

@@ -29,4 +29,3 @@ class CEL_RNNEncoder(nn.Module):
         x = output.mean(dim=1)
         x = self.output_proj(x)
         return x
-

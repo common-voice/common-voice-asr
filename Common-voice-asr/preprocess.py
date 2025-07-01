@@ -49,4 +49,3 @@ def main(full_mini: bool = False):
 if __name__ == "__main__":
     args = parse_command_args()
     main(full_mini=args.full_mini)
-
