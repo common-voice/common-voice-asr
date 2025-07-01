@@ -17,10 +17,12 @@ lexicon_path = BASE_DIR / "data" / "lexicon.txt"
 cleaned_path = BASE_DIR / "data" / "cleaned_text.txt"
 cleaned_csv = BASE_DIR / "data" / "cleaned_manifest.csv"
 
+
 def extract_transcripts():
     with open(corpus_path, "w") as f:
         for line in transcripts:
             f.write(line.strip() + "\n")
+
 
 def create_lexicon():
     with open(corpus_path) as f:
@@ -40,15 +42,18 @@ def create_lexicon():
             spelling = " ".join(list(word))
             f.write(f"{word} {spelling}\n")
 
+
 def normalize_text(text):
     text = text.upper()
     text = re.sub(r"[^\w\s']", "", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
+
 def normalize_transcripts():
     manifest["cleaned_transcript"] = manifest["transcript"].apply(normalize_text)
     manifest["cleaned_transcript"].to_csv(cleaned_path, index=False, header=False)
+
 
 def clean_lexicon():
     with open(cleaned_path) as f:
@@ -62,6 +67,7 @@ def clean_lexicon():
             spelling = " ".join([c.upper() if c != "'" else "'" for c in word])
             f.write(f"{word} {spelling}\n")
 
+
 def txt_to_csv():
     with open(cleaned_path, "r") as f:
         cleaned_lines = [line.strip() for line in f.readlines()]
@@ -74,6 +80,7 @@ def txt_to_csv():
             if idx < len(cleaned_lines):
                 row[1] = cleaned_lines[idx]
             writer.writerow(row)
+
 
 if __name__ == "__main__":
     txt_to_csv()

@@ -33,7 +33,7 @@ def test_single_forward_pass():
         input_tensor = load_spectogram(path)
         with torch.no_grad():
             output = encoder(input_tensor)
-        
+
         assert output.shape == (1, 256), f"Unexpected output shape: {output.shape}"
 
 
@@ -50,7 +50,7 @@ def test_batch_forward_pass():
         spect = np.load(path)
         max_width = max(max_width, spect.shape[1])
         tensors.append(spect)
-    
+
     padded_spects = []
     for spect in tensors:
         pad_width = max_width - spect.shape[1]
@@ -61,7 +61,7 @@ def test_batch_forward_pass():
 
     with torch.no_grad():
         output = encoder(batch_tensor)
-    
+
     assert output.shape[0] == len(npy_files), "Batch size does not match # files"
     assert output.shape[1] == 256, "Output feature dimension does not equal 256"
 
@@ -79,7 +79,7 @@ def test_wrapped_encoder_single_forward_pass():
     if (tensor[-1] < 300).any():
         pad_width = 300 - tensor.shape[1]
         tensor = torch.nn.functional.pad(tensor, (0, pad_width))
-    
+
     with torch.no_grad():
         output = wrap_encoder(tensor)
 

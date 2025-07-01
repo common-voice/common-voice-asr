@@ -1,4 +1,4 @@
-#to run: python -m tests.test_rnn_encoder (via Common-voice-asr)
+# to run: python -m tests.test_rnn_encoder (via Common-voice-asr)
 import os
 import numpy as np
 import torch
@@ -31,7 +31,7 @@ def test_single_forward_pass():
 
     with torch.no_grad():
         output = encoder(spect_tensor)
-        
+
     assert output.shape == (1, 256), f"Unexpected shape: {output.shape}"
 
 
@@ -61,7 +61,7 @@ def test_batch_forward_pass():
 
     with torch.no_grad():
         output = encoder(batch_tensor)
-    
+
     assert output.shape[0] == len(npy_files), "Batch size does not match # files"
     assert output.shape[1] == 256, "Output feature dimension does not equal 256"
 
@@ -89,13 +89,13 @@ def test_wrapped_encoder_single_forward_pass():
 
     if (tensor[-1] < 300).any():
         pad_len = 300 - tensor.shape[1]
-        tensor = F.pad(tensor, (0, 0, 0, pad_len)) 
-    
+        tensor = F.pad(tensor, (0, 0, 0, pad_len))
+
     with torch.no_grad():
         output = wrap_encoder(tensor)
 
     assert output.shape == (1, 10)
-    
+
 
 if __name__ == "__main__":
     test_single_forward_pass()

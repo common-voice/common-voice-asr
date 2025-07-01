@@ -12,9 +12,9 @@ class CTC_CNNEncoder(nn.Module):
         )
 
         self.conv_block2 = nn.Sequential(
-            nn.Conv2d(hidden_dim, hidden_dim * 2, kernel_size=3, padding=1), 
-            nn.BatchNorm2d(hidden_dim * 2), 
-            nn.ReLU(), 
+            nn.Conv2d(hidden_dim, hidden_dim * 2, kernel_size=3, padding=1),
+            nn.BatchNorm2d(hidden_dim * 2),
+            nn.ReLU(),
             nn.MaxPool2d(kernel_size=2)
         )
         self.conv_block3 = nn.Sequential(
@@ -32,7 +32,7 @@ class CTC_CNNEncoder(nn.Module):
         x = x.flatten(2)  # (T, N, C)
         x = self.classifier(x)
         return x
-    
+
 
 class CEL_CNNEncoder(nn.Module):
     def __init__(self, in_channels=1):
@@ -51,9 +51,10 @@ class CEL_CNNEncoder(nn.Module):
             nn.MaxPool2d(kernel_size=2)
         )
 
-        self.global_pool = nn.AdaptiveAvgPool2d((1,1))
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(64, 256)
         self.output_size = 256
+
 
     def forward(self, x):
         x = self.conv_block1(x)

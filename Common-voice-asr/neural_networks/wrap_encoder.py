@@ -16,5 +16,3 @@ class WrapEncoder(nn.Module):
         x = self.encoder(x)
         x = self.head(x)
         return x
-
-

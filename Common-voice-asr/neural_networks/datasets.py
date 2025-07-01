@@ -92,19 +92,19 @@ def ctc_rnn_collate_fn(batch):
         if pad_len > 0:
             spect = F.pad(spect, (0, pad_len))
         padded_spects.append(spect)
-    
+
     batch_tensor = torch.stack(padded_spects)
     batch_tensor = batch_tensor.squeeze(1).permute(0, 2, 1)
 
     concat_transcripts = torch.cat(transcripts)
-    
+
     input_lengths = torch.tensor([s.shape[2] for s in spects], dtype=torch.long)
     target_lengths = torch.tensor([len(t) for t in transcripts], dtype=torch.long)
 
     return batch_tensor, concat_transcripts, input_lengths, target_lengths
 
 
-#custom implementation for variable-length spects CNN Model w CTCLoss
+# custom implementation for variable-length spects CNN Model w CTCLoss
 def ctc_collate_fn(batch):
     filtered_batch = [
         (spect, transcript, input_lengths, target_lengths)
@@ -127,11 +127,9 @@ def ctc_collate_fn(batch):
         if pad_len > 0:
             spect = torch.nn.functional.pad(spect, (0, pad_len))
         padded_spects.append(spect)
-    
-    batch_tensor = torch.stack(padded_spects)
 
+    batch_tensor = torch.stack(padded_spects)
     concat_transcripts = torch.cat(transcripts)
-    
     input_lengths = torch.tensor([s.shape[2] for s in spects], dtype=torch.long)
     target_lengths = torch.tensor([len(t) for t in transcripts], dtype=torch.long)
 
