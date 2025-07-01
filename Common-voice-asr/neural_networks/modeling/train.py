@@ -383,7 +383,7 @@ def main(check_data: bool = False, full_mini: bool = False, model_type: str = "c
                     'model_type': model_type, 'hidden_dim': hidden_dim, 'lr': lr,
                     'batch_size': batch_size, 'epochs': epochs,
                 }
-            }, 
+            },
             os.path.join(log_path, "best_rnn.pth")
         )
 
