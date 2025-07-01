@@ -20,6 +20,7 @@ class CEL_RNNEncoder(nn.Module):
         self.input_proj = nn.Linear(input_dim, projection_size)
         self.lstm = nn.LSTM(input_size=256, hidden_size=hidden_size, num_layers=1, batch_first=True, bidirectional=True)
         self.output_proj = nn.Linear(hidden_size * 2, projection_size)
+        self.output_size = hidden_size * 2
 
     def forward(self, x):
         x = self.input_proj(x)

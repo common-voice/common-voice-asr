@@ -53,6 +53,7 @@ class CEL_CNNEncoder(nn.Module):
 
         self.global_pool = nn.AdaptiveAvgPool2d((1,1))
         self.fc = nn.Linear(64, 256)
+        self.output_size = 256
 
     def forward(self, x):
         x = self.conv_block1(x)
