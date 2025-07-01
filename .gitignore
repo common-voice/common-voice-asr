@@ -1,3 +1,16 @@
+# Data
+/data/
+
+# Training outputs
+neural_networks/runs
+
+# Mac OS-specific storage files
+.DS_Store
+
+# vim
+*.swp
+*.swo
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -66,9 +79,9 @@ instance/
 .webassets-cache
 
 # Local data files and training outputs
-Common-voice/data/processed/
-Common-voice/data/raw/
-Common-voice/neural_networks/runs/
+Common-voice-asr/data/processed/
+Common-voice-asr/data/raw/
+Common-voice-asr/neural_networks/runs/
 
 # Scrapy stuff:
 .scrapy
@@ -180,3 +193,4 @@ cython_debug/
 
 # W&B 
 /wandb/
+Common-voice-asr/wandb

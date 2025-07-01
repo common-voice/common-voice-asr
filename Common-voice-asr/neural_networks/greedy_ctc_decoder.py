@@ -1,5 +1,7 @@
 import torch
 from typing import List
+
+
 class GreedyCTCDecoder(torch.nn.Module):
     def __init__(self, labels, blank=0):
         super().__init__()
@@ -19,7 +21,7 @@ class GreedyCTCDecoder(torch.nn.Module):
                     tokens.append(self.labels[idx])
                 prev = idx
 
-            joined = "".join(tokens).replace("|"," ").strip()
+            joined = "".join(tokens).replace("|", " ").strip()
             words = joined.split()
             transcripts.append(words)
         return transcripts

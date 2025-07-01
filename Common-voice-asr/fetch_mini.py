@@ -10,10 +10,12 @@ from pathlib import Path
 load_dotenv()
 BASE_DIR = Path(os.getenv("BASE_DIR"))
 
+
 def parse_command_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--full_mini', action='store_true', help='Fetch full mini dataset')
     return parser.parse_args()
+
 
 DATA_DIR_21 = "/Users/setongerrity/Desktop/Mozilla/cv-corpus-21.0-delta-2025-03-14/en"
 OUTPUT_DIR = os.path.join(BASE_DIR, "data/raw/mini_cv")
@@ -29,11 +31,12 @@ MANIFEST_FULL_PATH = os.path.join(BASE_DIR, "data/manifest_full.csv")
 
 transcripts_frame_21 = pd.read_csv(TRANSCRIPTS_FILE_21, sep="\t")
 transcripts_frame_20 = pd.read_csv(TRANSCRIPTS_FILE_20, sep="\t")
+
+
 def fetch_full_mini():
     with open(MANIFEST_FULL_PATH, 'w', newline='', encoding='utf-8') as manifest_file:
         writer = csv.writer(manifest_file)
         writer.writerow(['filename', 'transcript', 'duration'])
-
 
         for idx, row in transcripts_frame_21.iterrows():
             filename = row['path']
@@ -71,7 +74,6 @@ def fetch_full_mini():
                 print(f"Warning: {filename} not found")
 
 
-
 # Mini manifest.csv & audio file generation
 def fetch_mini():
     num_samples = 100
@@ -79,7 +81,6 @@ def fetch_mini():
     with open(MANIFEST_PATH, 'w', newline='', encoding='utf-8') as manifest_file:
         writer = csv.writer(manifest_file)
         writer.writerow(['filename', 'transcript', 'duration'])
-
 
         for idx, row in sampled_transcripts_frame.iterrows():
             filename = row['path']
@@ -99,11 +100,13 @@ def fetch_mini():
             else:
                 print(f"Warning: {filename} not found")
 
-def main(full_mini: bool=False):
+
+def main(full_mini: bool = False):
     if full_mini:
         fetch_full_mini()
     else:
         fetch_mini()
+
 
 if __name__ == "__main__":
     args = parse_command_args()

@@ -7,9 +7,10 @@ from neural_networks.cnn_encoder import CTC_CNNEncoder
 from neural_networks.rnn_encoder import CTC_RNNEncoder
 from neural_networks.datasets import char_to_id
 
-# In tests/test_ctc_pipeline.py, create a dummy batch of shape [2,1,80,50] with a short transcript, 
+# In tests/test_ctc_pipeline.py, create a dummy batch of shape [2,1,80,50] with a short transcript,
 # run one forward+loss call, and assert loss is a finite scalar.
 # pytest Common-voice-asr/tests/test_ctc_pipeline.py
+
 
 def test_ctc_forward_pass_cnn():
     batch_size = 2
@@ -23,7 +24,7 @@ def test_ctc_forward_pass_cnn():
     targets = [torch.tensor([char_id_dict[c] for c in t]) for t in transcripts]
     target_lengths = torch.tensor([len(t) for t in targets])
     targets = torch.cat(targets)
-    
+
     encoder = CTC_CNNEncoder()
     model = WrapEncoder(encoder, 36, False)
     model.eval()
@@ -39,6 +40,7 @@ def test_ctc_forward_pass_cnn():
     assert loss.ndim == 0, "CTC loss should be a scalar"
     print("All tests for CNN Encoder passed.")
 
+
 def test_ctc_forward_pass_rnn():
     batch_size = 2
     channels = 1
@@ -52,7 +54,7 @@ def test_ctc_forward_pass_rnn():
     targets = [torch.tensor([char_id_dict[c] for c in t]) for t in transcripts]
     target_lengths = torch.tensor([len(t) for t in targets])
     targets = torch.cat(targets)
-    
+
     encoder = CTC_RNNEncoder()
     model = WrapEncoder(encoder, 36)
     model.eval()
@@ -68,10 +70,7 @@ def test_ctc_forward_pass_rnn():
     assert loss.ndim == 0, "CTC loss should be a scalar"
     print("All tests for RNN Encoder passed.")
 
+
 if __name__ == "__main__":
     test_ctc_forward_pass_cnn()
     test_ctc_forward_pass_rnn()
-
-    
-
-    

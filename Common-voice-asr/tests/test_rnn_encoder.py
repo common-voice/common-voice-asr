@@ -1,4 +1,4 @@
-#to run: python -m tests.test_rnn_encoder (via Common-voice-asr)
+# to run: python -m tests.test_rnn_encoder (via Common-voice-asr)
 import os
 import numpy as np
 import torch
@@ -13,6 +13,7 @@ load_dotenv()
 BASE_DIR = Path(os.getenv("BASE_DIR"))
 PROCESSED_DIR = BASE_DIR / "data" / "processed" / "mini_cv"
 NUM_TEST_FILES = 5
+
 
 def test_single_forward_pass():
     encoder = CEL_RNNEncoder()
@@ -30,9 +31,8 @@ def test_single_forward_pass():
 
     with torch.no_grad():
         output = encoder(spect_tensor)
-        
+
     assert output.shape == (1, 256), f"Unexpected shape: {output.shape}"
-    
 
 
 def test_batch_forward_pass():
@@ -52,7 +52,7 @@ def test_batch_forward_pass():
     padded_spects = []
     for spect in tensors:
         pad_width = max_width - spect.shape[1]
-        padded = np.pad(spect, ((0,0), (0, pad_width)), mode='constant')
+        padded = np.pad(spect, ((0, 0), (0, pad_width)), mode='constant')
 
         padded = padded.T
         padded_spects.append(torch.tensor(padded, dtype=torch.float32))
@@ -61,19 +61,21 @@ def test_batch_forward_pass():
 
     with torch.no_grad():
         output = encoder(batch_tensor)
-    
+
     assert output.shape[0] == len(npy_files), "Batch size does not match # files"
     assert output.shape[1] == 256, "Output feature dimension does not equal 256"
+
 
 def test_variable_sequence_lengths():
     encoder = CEL_RNNEncoder()
     encoder.eval()
     lengths = [80, 120, 160]
-    for l in lengths:
-        x = torch.randn(1, l, 80)
+    for length in lengths:
+        x = torch.randn(1, length, 80)
         with torch.no_grad():
             output = encoder(x)
         assert output.shape == (1, 256)
+
 
 def test_wrapped_encoder_single_forward_pass():
     encoder = CEL_RNNEncoder()
@@ -87,13 +89,13 @@ def test_wrapped_encoder_single_forward_pass():
 
     if (tensor[-1] < 300).any():
         pad_len = 300 - tensor.shape[1]
-        tensor = F.pad(tensor, (0, 0, 0, pad_len)) 
-    
+        tensor = F.pad(tensor, (0, 0, 0, pad_len))
+
     with torch.no_grad():
         output = wrap_encoder(tensor)
 
     assert output.shape == (1, 10)
-    
+
 
 if __name__ == "__main__":
     test_single_forward_pass()
