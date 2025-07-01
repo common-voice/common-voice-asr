@@ -16,7 +16,7 @@ BASE_DIR = Path(os.getenv("BASE_DIR"))
 def parse_command_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--full_mini', action='store_true', help='Fetch full mini dataset')
-    parser.add_argument('--corpus', action='store_true', help='Fetch corpus dataset, split into test & train')
+    parser.add_argument('--corpus', action='store_true', help='Fetch corpus dataset, split into dev & train')
     return parser.parse_args()
 
 
@@ -37,10 +37,13 @@ transcripts_frame_20 = pd.read_csv(TRANSCRIPTS_FILE_20, sep="\t")
 
 DATA_DIR_CORPUS = 'cv-corpus-22.0-2025-06-20/en'
 TRANSCRIPTS_FILE_TRAIN = os.path.join(DATA_DIR_CORPUS, 'train.tsv')
+TRANSCRIPTS_FILE_DEV = os.path.join(DATA_DIR_CORPUS, 'dev.tsv')
 DURATIONS_FILE = os.path.join(DATA_DIR_CORPUS, 'clip_durations.tsv')
 CLIPS_DIR_CORPUS =  os.path.join(DATA_DIR_CORPUS, "clips")
-OUTPUT_DIR_TRAIN = os.path.join(BASE_DIR, 'data/raw/train/corpus_cv')
+OUTPUT_DIR_TRAIN = os.path.join(BASE_DIR, 'data/raw/train_cv')
+OUTPUT_DIR_DEV = os.path.join(BASE_DIR, 'data/raw/dev_cv')
 MANIFEST_TRAIN_PATH = os.path.join(BASE_DIR, 'data/manifest_train.csv')
+MANIFEST_DEV_PATH = os.path.join(BASE_DIR, 'data/manifest_dev.csv')
 
 
 def fetch_full_mini():
@@ -111,9 +114,9 @@ def fetch_mini():
                 print(f"Warning: {filename} not found")
 
 
-def fetch_corpus(manifest_path, transcripts_file, durations_file, clips_dir, output_dir):
+def fetch_corpus(manifest_path, transcripts_file, output_dir):
     transcripts_frame = pd.read_csv(transcripts_file, sep="\t")
-    durations_frame = pd.read_csv(durations_file, sep="\t")
+    durations_frame = pd.read_csv(DURATIONS_FILE, sep="\t")
     durations_frame.rename(columns={'clip': 'path'}, inplace=True)
     
     merged_frame = pd.merge(transcripts_frame, durations_frame, on='path', how='inner')
@@ -129,7 +132,7 @@ def fetch_corpus(manifest_path, transcripts_file, durations_file, clips_dir, out
             sentence = row['sentence']
             duration_sec = round(row['duration[ms]'] / 1000.0, 3)
 
-            og_audio_path = os.path.join(clips_dir, filename)
+            og_audio_path = os.path.join(CLIPS_DIR_CORPUS, filename)
             dest_audio_path = os.path.join(output_dir, filename)
 
             if os.path.exists(og_audio_path):
@@ -143,7 +146,8 @@ def main(full_mini: bool = False, corpus: bool = False):
     if full_mini:
         fetch_full_mini()
     elif corpus:
-        fetch_corpus(MANIFEST_TRAIN_PATH, TRANSCRIPTS_FILE_TRAIN, DURATIONS_FILE, CLIPS_DIR_CORPUS, OUTPUT_DIR_TRAIN)
+        fetch_corpus(MANIFEST_TRAIN_PATH, TRANSCRIPTS_FILE_TRAIN, OUTPUT_DIR_TRAIN)
+        fetch_corpus(MANIFEST_DEV_PATH, TRANSCRIPTS_FILE_DEV, OUTPUT_DIR_DEV)
     else:
         fetch_mini()
 

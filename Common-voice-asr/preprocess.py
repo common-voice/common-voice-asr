@@ -17,7 +17,7 @@ N_MELS = 80
 def parse_command_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--full_mini', action='store_true', help='Load full mini dataset')
-    parser.add_argument('--full', action='store_true', help='Load entire dataset')
+    parser.add_argument('--corpus', action='store_true', help='Preprocess corpus dataset, split into train & dev')
     return parser.parse_args()
 
 
@@ -37,18 +37,22 @@ def preprocess(raw_audio_dir, output_dir):
                 print(f"Error processing {filename}: {e}")
 
 
-def main(full_mini: bool = False):
-    if full_mini:
-        raw_audio_dir = os.path.join(BASE_DIR, "data/raw/full_mini_cv")
-        output_dir = os.path.join(BASE_DIR, "data/processed/full_mini_cv")
-    elif full:
-        raw_audio_dir = 'cv-corpus-22.0-2025-06-20'
+def main(full_mini: bool = False, corpus: bool = False):
+    if corpus:
+        for split in ['dev', 'train']:
+            raw_audio_dir = os.path.join(BASE_DIR, f"data/raw/{split}_cv")
+            output_dir = os.path.join(BASE_DIR, f"data/processed/{split}_cv")
+            preprocess(raw_audio_dir, output_dir)
     else:
-        raw_audio_dir = os.path.join(BASE_DIR, "data/raw/mini_cv")
-        output_dir = os.path.join(BASE_DIR, "data/processed/mini_cv")
-    preprocess(raw_audio_dir, output_dir)
+        if full_mini:
+            raw_audio_dir = os.path.join(BASE_DIR, "data/raw/full_mini_cv")
+            output_dir = os.path.join(BASE_DIR, "data/processed/full_mini_cv")
+        else:
+            raw_audio_dir = os.path.join(BASE_DIR, "data/raw/mini_cv")
+            output_dir = os.path.join(BASE_DIR, "data/processed/mini_cv")
+        preprocess(raw_audio_dir, output_dir)
 
 
 if __name__ == "__main__":
     args = parse_command_args()
-    main(full_mini=args.full_mini)
+    main(full_mini=args.full_mini, full=args.corpus)
