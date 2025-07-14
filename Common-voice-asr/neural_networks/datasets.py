@@ -38,7 +38,7 @@ class CTC_MiniCVDataset(Dataset):
         return spec, transcript_ids, input_lengths, target_lengths
 
 
-tokens = ['<blank>', '|', ' '] + list(string.ascii_uppercase + '.' + '!' + '?' + '-' + ',' + '"' + "'" + ':')
+tokens = ['<blank>', '|'] + list(string.ascii_uppercase) + [' ', "'", '-']
 char2idx = {c: i for i, c in enumerate(tokens)}
 
 
@@ -78,12 +78,9 @@ class CEL_MiniCVDataset(Dataset):
 
         label = int(row['label'])
         return spect_tensor, label
+    
 
-
-#  Collate_fn implementation for RNN w CTCLoss
-def ctc_rnn_collate_fn(batch):
-    spects, transcripts, input_lengths, target_lengths = zip(*batch)
-
+def alt_padding(spects):
     max_T = max(s.shape[2] for s in spects)
     padded_spects = []
 
@@ -92,12 +89,32 @@ def ctc_rnn_collate_fn(batch):
         if pad_len > 0:
             spect = F.pad(spect, (0, pad_len))
         padded_spects.append(spect)
+    return padded_spects
+
+
+def transformer_collate_fn(batch):
+    spects, transcripts, input_lengths, target_lengths = zip(*batch)
+    
+    padded_spects = alt_padding(spects)
+    
+    batch_tensor = torch.stack(padded_spects)
+    concat_transcripts = torch.cat(transcripts)
+    input_lengths = torch.tensor([s.shape[2] for s in spects], dtype=torch.long)
+    target_lengths = torch.tensor([len(t) for t in transcripts], dtype=torch.long)
+    
+    return batch_tensor, concat_transcripts, input_lengths, target_lengths
+
+
+#  Collate_fn implementation for RNN w CTCLoss
+def ctc_rnn_collate_fn(batch):
+    spects, transcripts, input_lengths, target_lengths = zip(*batch)
+
+    padded_spects = alt_padding(spects)
 
     batch_tensor = torch.stack(padded_spects)
     batch_tensor = batch_tensor.squeeze(1).permute(0, 2, 1)
 
     concat_transcripts = torch.cat(transcripts)
-
     input_lengths = torch.tensor([s.shape[2] for s in spects], dtype=torch.long)
     target_lengths = torch.tensor([len(t) for t in transcripts], dtype=torch.long)
 

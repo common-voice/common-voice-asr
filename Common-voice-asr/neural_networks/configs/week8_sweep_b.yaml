@@ -1,0 +1,45 @@
+project: week8_sweep_b
+name: model_b
+method: bayes
+metric:
+  name: min_val_wer
+  goal: minimize
+parameters:
+  full_mini: 
+    values: [False]
+  corpus: 
+    values: [True]
+  greedy: 
+    values: [False]
+  model_type: 
+    values: ["transformer"]
+  epochs: 
+    values: [5]
+  learning_rate: 
+    values: [0.0001, 0.001, 0.0005]
+  batch_size:
+    values: [16, 32]
+  hidden_dimension:
+    values: [64]
+  lm_weight:
+    values: [0.25, 0.5, 1.0, 3.23]
+  word_score: 
+    values: [-1.0, -0.52, -0.26, -0.01]
+  sample_size: 
+    values: [2500]
+  d_model: 
+    values: [256, 384, 512]
+  n_head: 
+    values: [4, 8]
+  dim_feedforward: 
+    values: [1024, 2048, 3072]
+  nlayers: 
+    values: [3, 6]
+  lstm_hidden: 
+    values: [128, 256]
+  lstm_layers: 
+    values: [1, 2]
+  dropout: 
+    values: [0.1, 0.3, 0.5]
+  sample_spect_folder: 
+    values: [None]

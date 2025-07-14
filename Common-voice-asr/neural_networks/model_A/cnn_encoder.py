@@ -2,8 +2,9 @@ import torch.nn as nn
 
 
 class CTC_CNNEncoder(nn.Module):
-    def __init__(self, in_channels=1, hidden_dim=32, num_classes=37):
+    def __init__(self, in_channels=1, hidden_dim=32, num_classes=31, input_freq_bins=32, transformer=False):
         super().__init__()
+        self.transformer = transformer
         self.conv_block1 = nn.Sequential(
             nn.Conv2d(in_channels, hidden_dim, kernel_size=3, padding=1),
             nn.BatchNorm2d(hidden_dim),
@@ -22,7 +23,12 @@ class CTC_CNNEncoder(nn.Module):
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU()
         )
-        self.classifier = nn.LazyLinear(num_classes)
+        
+        if transformer:
+            self.output_channels = hidden_dim
+            self.downsampled_freq = input_freq_bins // 4
+        else:
+            self.classifier = nn.LazyLinear(num_classes)
 
     def forward(self, x):
         x = self.conv_block1(x)
@@ -30,7 +36,8 @@ class CTC_CNNEncoder(nn.Module):
         x = self.conv_block3(x)
         x = x.permute(0, 3, 1, 2)
         x = x.flatten(2)  # (T, N, C)
-        x = self.classifier(x)
+        if not self.transformer:
+            x = self.classifier(x)
         return x
 
 

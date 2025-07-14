@@ -1,5 +1,5 @@
-project: week7_sweep
-name: week7_sweep
+project: week8_sweep_a
+name: week8_sweep_b
 method: bayes
 metric:
   name: min_val_wer
@@ -26,4 +26,6 @@ parameters:
   word_score: 
     values: [-1.0, -0.52, -0.26, -0.01]
   sample_size: 
-    values: [5000]
+    values: [2500]
+  sample_spect_folder: 
+    values: [None]

@@ -25,18 +25,20 @@ from torch.utils.data import random_split, DataLoader
 from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
 
-from neural_networks.wrap_encoder import WrapEncoder
+from neural_networks.model_A.wrap_encoder import WrapEncoder
 from neural_networks.datasets import CEL_MiniCVDataset, cel_collate_fn, cel_rnn_collate_fn
-from neural_networks.datasets import CTC_MiniCVDataset, ctc_collate_fn, ctc_rnn_collate_fn
-from neural_networks.cnn_encoder import CTC_CNNEncoder, CEL_CNNEncoder
-from neural_networks.rnn_encoder import CTC_RNNEncoder, CEL_RNNEncoder
+from neural_networks.datasets import CTC_MiniCVDataset, ctc_collate_fn, ctc_rnn_collate_fn, transformer_collate_fn
+from neural_networks.model_A.cnn_encoder import CTC_CNNEncoder, CEL_CNNEncoder
+from neural_networks.model_A.rnn_encoder import CTC_RNNEncoder, CEL_RNNEncoder
+from neural_networks.model_B.hybrid_transformer import HybridTransformer
 from neural_networks.greedy_ctc_decoder import GreedyCTCDecoder
 from neural_networks.beam_search_decoder import beam_search_decoder
 
 load_dotenv()
 BASE_DIR = Path(os.getenv("BASE_DIR", Path.cwd()))
 
-tokens = ['<blank>', '|', ' '] + list(string.ascii_uppercase + '.' + '!' + '?' + '-' + ',' + '"' + "'" + ':')
+tokens = ['<blank>', '|'] + list(string.ascii_uppercase) + [' ', "'", '-']
+N_MELS = 80
 
 
 def parse_command_args():
@@ -45,7 +47,7 @@ def parse_command_args():
     parser.add_argument('--full_mini', action='store_true', help="Load larger data split from CV Train")
     parser.add_argument('--corpus', action='store_true', help="Load corpus train & dev large datasets")
     parser.add_argument('--greedy', action='store_true', help="Use Greedy CTC Decoder")
-    parser.add_argument('--model_type', choices=['cnn', 'rnn'], required=True, help='Specify which model to use')
+    parser.add_argument('--model_type', choices=['cnn', 'rnn', 'transformer'], required=True, help='Specify which model to use')
     parser.add_argument('--epochs', type=int, required=True, help="Number of epochs to train")
     parser.add_argument('--lr', type=float, help="Learning rate")
     parser.add_argument('--logdir', type=str, required=True, help="Folder to write trains to")
@@ -54,7 +56,8 @@ def parse_command_args():
     parser.add_argument('--test-sweep', action='store_true', help="Testing sweep with small dataset")
     parser.add_argument('--lm-weight', type=float, default=3.23, help="Learning model weight for beam search decoder")
     parser.add_argument('--word-score', type=float, default=-0.26, help="Word score for beam search decoder")
-    parser.add_argument('--sample_size', type=int, default=0, help="Sample size for dataset")
+    parser.add_argument('--sample_size', type=int, default=0, help="Specifying sample size from the dataset")
+    parser.add_argument('--sample_spect_folder', type=str, default=None, help='Train & validate with a mel-spectogram sweep')
     return parser.parse_args()
 
 
@@ -187,7 +190,7 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
                 loss = criterion(log_probs, targets, input_lengths, target_lengths)
             losses.append(loss.item())
             torch.cuda.synchronize()
-            if corpus and sample_size == 0:
+            if corpus:
                 if batch_idx % log_interval_batches == 0:
                     hypotheses = decoder(log_probs.transpose(0, 1))
                     references = get_references(target_lengths, targets)
@@ -268,7 +271,9 @@ def ctc_validate(model, val_loader, criterion, device, decoder, epoch, corpus, s
     return avg_loss, avg_wer, avg_cer
 
 
-def setup_encoder_and_data(mini, manifest_path, spect_dir, model_type, hidden_dim):
+def setup_encoder_and_data(mini, manifest_path, spect_dir, model_type, hidden_dim, d_model, nhead, dim_ff, nlayers, lstm_hidden,
+                           lstm_layers, dropout):
+    apply = False
     if mini:
         df = pd.read_csv(manifest_path)
         if 'label' not in df.columns:
@@ -298,6 +303,10 @@ def setup_encoder_and_data(mini, manifest_path, spect_dir, model_type, hidden_di
             model = CTC_RNNEncoder(hidden_size=hidden_dim)
             collate = ctc_rnn_collate_fn
             apply = True
+        elif model_type == "transformer":
+            model = HybridTransformer(input_dim=N_MELS, vocab_size=len(tokens), d_model=d_model, nhead=nhead, dim_feedforward=dim_ff,
+                                      nlayers=nlayers, lstm_hidden=lstm_hidden, lstm_layers=lstm_layers, dropout=dropout)
+            collate = transformer_collate_fn
         else:
             raise ValueError(f"Unknown model type: {model_type}")
     return df, dataset, num_classes, apply, model, collate
@@ -321,8 +330,9 @@ def test_sweep(df, spect_dir, batch_size, collate, model, optimizer, criterion, 
 
 
 def run_ctc(model, epochs, train_loader, val_loader, optimizer, criterion, device, decoder, log_interval, writer, corpus, 
-            sample_size):
+            sample_size, sample_spect_folder = None):
     min_val_wer = 1.0
+    best_epoch = 0
     for epoch in range(1, epochs + 1):
         train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_interval, decoder, 
                                           corpus, sample_size)
@@ -341,16 +351,20 @@ def run_ctc(model, epochs, train_loader, val_loader, optimizer, criterion, devic
                 'val/wer': val_wer,
                 'val/cer': val_cer,
                 })
-
-        min_val_wer = min(min_val_wer, val_wer)
+        if min_val_wer > val_wer:
+            min_val_wer = val_wer
+            best_epoch = epoch
         print(f"\n Epoch {epoch} completed")
         print(f"Train CTC loss: {train_loss:.4f}")
         print(f"Train WER: {train_wer:.4f}")
         print(f"Val CTC loss: {val_loss:.4f}")
         print(f"Val WER: {val_wer:.4f}")
         print(f"Val CER: {val_cer:.4f}")
-
-    return min_val_wer
+    if wandb.run:
+        if sample_spect_folder is not None:
+            wandb.run.summary['sample_spect'] = sample_spect_folder
+        wandb.run.summary['val/wer_min'] = min_val_wer
+        wandb.run.summary["val/wer_best_epoch"] = best_epoch
 
 
 def run_cel(epochs, model, train_loader, val_loader, optimizer, criterion, device, log_interval, writer):
@@ -371,7 +385,9 @@ def run_cel(epochs, model, train_loader, val_loader, optimizer, criterion, devic
 def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False, greedy: bool = False, 
          model_type: str = "cnn", epochs: int = 3, lr: float = 1e-3, logdir: str = 'runs/week4_ctc', 
          batch_size: int = 4, hidden_dim: int = 64, test_sweep: bool = False, lm_weight: float = 3.23, 
-         word_score: float = -0.26, sample_size: int = 0):
+         word_score: float = -0.26, sample_size: int = 0, 
+         d_model: int = 512, n_head: int = 8, dim_feedforward: int = 2048, nlayers: int = 6, lstm_hidden: int = 256, 
+         lstm_layers: int = 1, dropout: float = 0.5, sample_spect_folder: str = None):
 
     log_dir = os.path.join("neural_networks", logdir)
     log_path = os.path.join(BASE_DIR, log_dir)
@@ -381,7 +397,9 @@ def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False
         manifest_path = os.path.join(BASE_DIR, "data/cleaned_manifest.csv")
         spect_dir = os.path.join(BASE_DIR, "data/processed/full_mini_cv")
         df, dataset, num_classes, apply, model, collate = setup_encoder_and_data(mini,
-                                                                                 manifest_path, spect_dir, model_type, hidden_dim)
+                                                                                 manifest_path, spect_dir, model_type, hidden_dim,
+                                                                                 d_model, n_head, dim_feedforward, nlayers,
+                                                                                 lstm_hidden, lstm_layers, dropout)
     elif corpus:
         train_manifest_path = os.path.join(BASE_DIR, "corpus_data/cleaned_train.csv")
         train_spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/train_cv")
@@ -389,16 +407,38 @@ def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False
         dev_spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/dev_cv")
         train_df, train_set, num_classes, apply, model, collate = setup_encoder_and_data(mini,
                                                                                          train_manifest_path, train_spect_dir, 
-                                                                                         model_type, hidden_dim)
+                                                                                         model_type, hidden_dim, d_model, n_head,
+                                                                                         dim_feedforward, nlayers, lstm_hidden,
+                                                                                         lstm_layers, dropout)
         val_df, val_set, num_classes, apply, model, collate = setup_encoder_and_data(mini,
                                                                                      dev_manifest_path, dev_spect_dir, 
-                                                                                     model_type, hidden_dim)
+                                                                                     model_type, hidden_dim, d_model, n_head,
+                                                                                     dim_feedforward, nlayers, lstm_hidden,
+                                                                                     lstm_layers, dropout)
+    elif sample_spect_folder is not None:
+        sample_spect = True
+        train_manifest_path = os.path.join(BASE_DIR, "corpus_data/cleaned_train.csv")
+        train_spect_dir = os.path.join(BASE_DIR, os.path.join("corpus_data/processed/train_cv/sample", sample_spect_folder))
+        dev_manifest_path = os.path.join(BASE_DIR, "corpus_data/cleaned_dev.csv")
+        dev_spect_dir = os.path.join(BASE_DIR, os.path.join("corpus_data/processed/dev_cv/sample", sample_spect_folder))
+        train_df, train_set, num_classes, apply, model, collate = setup_encoder_and_data(mini,
+                                                                                         train_manifest_path, train_spect_dir, 
+                                                                                         model_type, hidden_dim, d_model, n_head,
+                                                                                         dim_feedforward, nlayers, lstm_hidden,
+                                                                                         lstm_layers, dropout)
+        val_df, val_set, num_classes, apply, model, collate = setup_encoder_and_data(mini,
+                                                                                     dev_manifest_path, dev_spect_dir, 
+                                                                                     model_type, hidden_dim, d_model, n_head,
+                                                                                     dim_feedforward, nlayers, lstm_hidden,
+                                                                                     lstm_layers, dropout)
     else:
         mini = True
         manifest_path = BASE_DIR / "data" / "manifest.csv"
         spect_dir = BASE_DIR / "data" / "processed" / "mini_cv"
         df, dataset, num_classes, apply, model, collate = setup_encoder_and_data(mini,
-                                                                                 manifest_path, spect_dir, model_type, hidden_dim)
+                                                                                 manifest_path, spect_dir, model_type, hidden_dim,
+                                                                                 d_model, n_head, dim_feedforward, nlayers, 
+                                                                                 lstm_hidden, lstm_layers, dropout)
     if mini or full_mini:
         train_len = int(0.8 * total_len)
         val_len = total_len - train_len
@@ -414,10 +454,11 @@ def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False
         if sample_size > data_len:
             print(f"Sample size cannot be greater than {data_len}")
             return
-        train_ratio = total_train / data_len
-        val_ratio = total_val / data_len
-        train_sample = round(sample_size * train_ratio)
+        train_sample = round(sample_size * 0.85)
         val_sample = sample_size - train_sample
+        if val_sample > total_val:
+            print(f"The 15% sample size split for validation, currently {val_sample}, cannot be greater than {total_val}")
+            return
         train_indices = random.sample(range(total_train), k=train_sample)
         val_indices = random.sample(range(total_val), k=val_sample) if total_val > 0 else []
         train_set = [train_set[i] for i in train_indices]
@@ -437,8 +478,8 @@ def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False
             print("Transcripts: ", transcripts)
             break
         return
-
-    model = WrapEncoder(model, num_classes, apply)
+    if not model_type == "transformer":
+        model = WrapEncoder(model, num_classes, apply)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
@@ -455,8 +496,8 @@ def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False
         if test_sweep:
             test_sweep(df, spect_dir, batch_size, collate, model, optimizer, criterion, device, epochs, log_interval)
             return
-        val_wer = run_ctc(model, epochs, train_loader, val_loader, optimizer, criterion, device, decoder, log_interval, writer,
-                          corpus, sample_size)
+        run_ctc(model, epochs, train_loader, val_loader, optimizer, criterion, device, decoder, log_interval, writer,
+                corpus, sample_size, sample_spect_folder)
     else:
         criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=0.0001)
@@ -476,9 +517,6 @@ def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False
             os.path.join(log_path, "best_rnn.pth")
         )
 
-    if wandb.run:
-        wandb.summary['final_val_wer'] = val_wer
-
     writer.flush()
     writer.close()
 
@@ -486,5 +524,6 @@ def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False
 if __name__ == "__main__":
     args = parse_command_args()
     main(args.check_data, args.full_mini, args.corpus, args.greedy, args.model_type, args.epochs, args.lr,
-         args.logdir, args.batch_size, args.hidden_dim, args.test_sweep,
-         args.lm_weight, args.word_score, args.sample_size)
+         args.logdir, args.batch_size, args.hidden_dim, args.test_sweep, args.lm_weight, args.word_score, 
+         args.sample_size, args.d_model, args.nhead, args.dim_feedforward, args.nlayers, 
+         args.lstm_hidden, args.lstm_layers, args.dropout, args.sample_spect_folder)

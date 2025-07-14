@@ -1,245 +1,160 @@
-# PyTorch Hyperparameter Tuning Tutorial
-- hyperparameter tuning - choosing a different learning rate or changing a network layer size can have a dramatic impact on model performance
-Ray Tune = tool for parameter tuning
- - integrate through slight mods:
-    - wrap data loading and training in functions
-    - make some network parameters configurable
-    - add checkpointing (optional)
-    - define the search space for the model tuning
-- install package: ray[tune] & torchvision
-    - from ray import tune
-    - from ray import train
-     - from ray.train import Checkpoint, get_checkpoint
-    - from ray.tune.schedulers import ASHAScheduler
-    - import ray.cloudpickle as pickle
-Dataloaders
- - wrap in their own func & pass a global dir - can share data dir between diff trials
-CNN
- - can only tune parameters that are configurable
-Train function
-- wrap in function train_cifar(config, data_dir=None)
-    - config = hyperparameters to train w
-    - data_dir = specifies where we load and store the data, so multiple runs can share the same data source
-- learning rate also configurable: optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
-- split training data into validation & training -> train on 80% & calculate val loss on remaining 20%
-- batch sizes configurable
-Adding (multi) GPU support with DataParallel
-- can wrap model in nn.DataParallel to support data parallel training on multiple GPUs
-- using device var ensures training also works with no GPUs available
-- Pytorch requires sending data to GPU memory explicitly
-Communicating w Ray Tune
-- send the validation loss and accuracy back to Ray Tune. Ray Tune can then use these metrics to decide which hyperparameter configuration lead to the best results
-    - metrics can also be used to stop bad performing trials early in order to avoid wasting resources on those trials.
-Test set accuracy
-- hold-out test set with data that has not been used for training the model
-Configuring speech space
-- tune.choice() accepts a list of values that are uniformly sampled from
-- l1 and l2 parameters should be powers of 2 between 4 and 256
-- lr (learning rate) should be uniformly sampled between 0.0001 and 0.1
-- batch size is a choice between 2, 4, 8, and 16
-- at each trial Ray Tune randomly samples a combination of parameters from these search spaces
-- ASHAScheduler terminates bad performing trials early
-- after model training, find the best performing one and load the trained network from the checkpoint file. Then obtain the test set accuracy and report everything by printing.
-# TensorBoard HParams Dashboard Guide
-- HParams dashboard in TensorBoard provides several tools to help with this process of identifying the best experiment or most promising sets of hyperparameters
-Experiment setup and the HParams experiment summary
-- Three hyperparameters in model: # units in the first dense layer, dropout rate in the dropout layer, optimizer
-- list values to try - ex. HP_NUM_UNITS = hp.HParam('num_units', hp.Discrete([16, 32]))
-Adapt TensorFlow runs to log hyperparameters and metrics
-- model: two dense layers with a dropout layer between them
-- for each run, log an hparams summary with the hyperparameters and final accuracy
-Start runs and log them all under one parent directory
-- use a grid search: try all combinations of the discrete parameters and just the lower and upper bounds of the real-valued parameter
-Visualize the results in TensorBoard's HParams plugin
-- start TensorBoard and click on "HParams" at the top
-- left pane offers filtering of hyperparameters, metrics, run status, etc.
-- dashboard has 3 diff views:
-    - Table View lists the runs, their hyperparameters, and their metrics
-    - Parallel Coordinates View shows each run as a line going through an axis for each hyperparemeter and metric
-    - Scatter Plot View shows plots comparing each hyperparameter/metric with each metric, can help identify correlations
-# Goodfellow et al., “Hyperparameter Search” (Chapter 11)
-Practical Methodology
-- need to know how to choose an algorithm for a particular application and how to monitor and respond to feedback obtained from experiments in order to improve a machine learning system
-- Practical design process:
-    - determine goals: error metric to use & target value. Should be driven by problem application seeks to solve
-    - establish a working end to end pipeline asap, including estimation of performance metrics
-    - instrument system well to determine bottlenecks in performance
-    - repeatedly make incremental changes
-11.1 Performance metrics
-- error metric guides future actions
-    - in an academic setting error rate derived from previously benchmarked results
-- measuring with precision & recall: precision = fraction of detections reported by the model that were correct, recall = fraction of true events that were detected
-    - common to plot PR curve, precision on y-axis & recall on x-axis
-    - classifier generates a score that is higher if the event to be detected occurred
-- summarize performance w single #: convert precisionpand recallrinto anF-score given by F = 2pr/p+r
-- coverage: fraction of examplesfor which the machine learning system is able to produce a response
-11.2 Default Baseline Models
-- speech recognition should begin with an appropriate deep learning model
-- supervised learning with ﬁxed-size vectors as input, use a feedforward network with fully connected layers
-- input has known topological structure (ex., input is an image), use a convolutional network
-    - begin by using some kind of piecewise linear unit
-- input or output is a sequence, use a gated recurrent net (LSTM or GRU)
-- reasonable opitmization algo = SGD with momentum witha decaying learning rate or Adam
-- batch normalization can have a dramatic eﬀect on optimization performance
-    - should be introduced quickly if optimization seems problematic
-    - can reduce generalization error and allows dropout to be omitted
-- unless dataset massive, should include some mild forms of regularization from the start
-    - early stopping, dropout
-- only use unsupervisedlearning in your ﬁrst attempt if the task you want to solve is unsupervised
-11.3 Determining whether to gather more data
-- often much better to gather more data than to improve the learning algorithm
-- if performance on training set is poor, the learning algorithm is not using the training data that is already available, so there is no reason to gather more data
-    - try increasing thesize of the model by adding more layers or adding more hidden units to each layer
-    - try improving the learning algorithm, ex. by tuning the learningrate hyperparameter
-- if large models & carefully tuned optimization algos don't work well - problem might be the quality of the training data
-- If test set performance is much worse than training set performance, then gathering more data is one of the most eﬀective solutions
-- simple alternative to gathering more data: reduce the size of the model or improvere gularization, by adjusting hyperparameters or by adding regularization strategies 
-- gap between train and test performance is unacceptable even after tuning regularization hyperparameters - gathering more data is advisable
-11.4 Selecting Hyperparameters
-- 2 basic approaches to choosing these hyperparameters: choosing manually and choosing automatically
-11.4.1 Manual Hyperparameter Tuning
-- must understand the relationship betweenhyperparameters, training error, generalization error and computational resources(memory and runtime)
-- goal usually to ﬁnd the lowest generalization error subject to some runtime and memory budget
-- alt goal: adjust the eﬀective capacity of the model to match the complexity of the task
-    - effective capacity constrained by 3 factors:
-        - representational capacity of model
-        - ability of learning algorithm to successfully minimize the cost function used to train the model
-        - degree to which the cost function and training procedure regularize the model
-    - model with more layers and more hidden units per layer has higher representational capacity - capable of representing more complicated functions
-- generalization error typically follows a U-shaped curve when plotted as a function of one of the hyperparameters
-    - somewhere in the middle lies the optimal model capacity, which achieves the lowest possible generalization error, by adding a medium generalization gap to a medium amount of training error
-    - some hyperparameters can only subtract capacity
-- learning rate most important - controls the eﬀective capacity of the model in a more complicated way than other hyperparameters
-    - effective capacity highest when the learning rate is correct for the optimization problem
-- tuning parameters other than learning rate requires monitoring both training and test error to diagnose whether model is overﬁtting or underﬁtting,then adjusting capacity appropriately
-- error on the training set is higher than your target error rate: no choice but to increase capacity
-- error on the test set is higher than your target error rate:
-    - to reduce gap, change regularization hyperparameters to reduce eﬀective model capacity
-- most hyperparameters can be set by reasoning about whether they increase or decrease model capacity
-- do not lose sight of end goal: good performance on test set
-    - adding regularization only way to achieve
-    - brute force way: continually increase model capacity and training set sizeuntil the task is solved
-        - increases computational cost of training and inference
-Effect of Hyperparameters on Model Capacity
-Number of hidden units
-- Increases capacity when... increased
-- Reason... increases the representational capacity of the model
-- Caveats... increases both the time and memory cost of essentially every operation on the model
-Learning rate
-- Increases capacity when... tuned optimally
-- Reason... improper learning rate, whether too high or too low, results in a model with low eﬀective capacity due to optimization failure
-Convolutional Kernel Width
-- Increases capacity when... increased
-- Reason... increases # of parameters in the model
-- Caveats... wider kernel results in a narrower output dimension, reducing model capacity unless you use implicit zero padding to reduce this eﬀect. Wider kernels require more memory for parameter storage and increase runtime, but a narrower output reduces memory cost
-Implicit zero padding
-- Increases capacity when... increased
-- Reason... adding implicit zeros be-fore convolution keeps therepresentation size large
-- Caveats... increases time and memory cost of most operations
-Weight Decay coefficient
-- Increases capacity when... decreased
-- Reason... decreasing the weight decay coeﬃcient frees the model parameters to become larger
-Dropout rate
-- Increases capacity when... decreased
-- Reason... Dropping units less oftengives the units more oppor-tunities to “conspire” witheach other to ﬁt the train-ing set
-11.4.2 Automatic Hyperparameter Optimization Algorithms
-- hyper parameter optimization algorithms: wrap a learning algorithm and choose its hyperparameters, thus hiding the hyperparameters of the learning algorithm from the user
-- often have their own hyperparameters
-    - usually easier to choose - acceptable performance may be achieved on a wide range of tasks using the same secondary hyperparameters for all tasks
-11.4.3 Grid Search
-- 3 or fewer hyperparameters
-    - computational cost grows exponentially with the number of hyperparameters
-- for each hyperparameter, the user selects a small ﬁnite set of values to explore
-- grid search algorithm then trains a model for every joint speciﬁcation of hyperparameter values in the Cartesian product of the set of values for each individual hyperparameter
-11.4.4 Random Search
-- simple to program, moreconvenient to use, and converges much faster to good values than grid search
-- first deﬁne a marginal distributionfor each hyperparameter
-    - do not discretize or bin the values of the hyperparameters, so that we can explore a larger set of values and avoid additional computational cost
-- faster bc no wasted experimental runs
-11.4.5 Model-Based Hyperparameter Optimization
-- search for good hyperparameters can be cast as an optimization problem
-    - decision variables = hyperparameters, cost to be optimized = validation set error that results from training using these hyperparameters
-- to compensate for lack of gradient of some diﬀerentiable error measure on the val set - can build a model of the val set error, then propose new hyperparameter guesses by performing optimization within this model
-- optimization involves trade-off between between exploration and exploitation
-    - exploration - proposing hyperparameters for that there is high uncertainty, which may lead to a large improvement but may also perform poorly
-    - explotiation - proposing hyperparameters that the model is conﬁdent will perform as well as any hyperparameters it has seen so far—usually very similar to ones seen before
-- common drawback - require for a training experiment to run to completion before they are able to extract any information from it (less efficient)
-11.5 Debugging Strategies
-- with poor machine learning performance, difficult to tell whether the poor performance is intrinsic to the algorithm itself or whether there is a bug in the implementation of the algorithm
-- Debugging strats: design a case that is so simple that the correct behavior actually can be predicted, or we design a test that exercises one part of the neural net implementation in isolation
-Debugging tests:
-- Visualize the model in action:
-    - when training a model, produce visualizations of the output
-    - Directly observing the machine learning model performing its task will help to determine whether the quantitative performance numbers it achieves seem reasonable
-- Visualize the worst mistakes
-    - By viewing the training set examples that are the hardest to model correctly, one can often discover problems with the way the data have been preprocessed or labeled
-- Reason about software using training and test error
-    - If training error is low but test error is high, likely that that the training procedure works correctly, and the model is overﬁtting for fundamental algorithmic reasons
-        - alternatively, test error is measured incorrectly because of a problem with saving the model after training then reloading, or because the test data was prepared diﬀerently from the training data
-- Fit a tiny dataset
-    - usually even small models can be guaranteed to be able ﬁt a suﬃciently small dataset
-    - if you cannot train a classiﬁer to correctly label a single example, an autoencoder to successfully reproduce a single example with high ﬁdelity, or a generative model to consistently emit samples resembling a single example, there is a software defect preventing successful optimization on the training set
-- Compare back-propagated derivatives to numerical derivatives
-    - common source of error is implementing gradient expression incorrectly
-    - verify by comparing the derivatives computed by your implementation of automatic diﬀerentiation to the derivatives computed by ﬁnite diﬀerences
-    - can improve the accuracy of the approximation by using the centered diﬀerence
-- Monitor histograms of activations and gradient
-    - often useful to visualize statistics of neural network activations and gradients, collected over a large amount of training iterations
-    - preactivation value of hidden units can tell us if the units saturate, or how often they do
-    - useful to compare themagnitude of parameter gradients to the magnitude of the parameters themselves
-        - would like the magnitude of parameter updates over a minibatch to represent something like 1 percent of the magnitude of the parameter
-- many deep learning algorithms provide some sort of guarantee aboutthe results produced at each step
-    - can be debugged by testing each of their guarantees
-11.6 Example: Multi-digit Number recognition
-- process began with data collection
-- transcription task was preceded by a signiﬁcant amount of dataset curation, including using other machine learning techniques to detect the house numbers prior to transcribing them
-- important general principle is to tailor the choice of metric to the business goals for the project
-- after choosing quantitative goals, next step is to rapidly establish a sensible baseline system
-    - iteratively reﬁne the baseline and test whether each change makes an improvement
-- instrumenting the training and test set performance to determine whether the problem was underﬁtting or overﬁtting
-    - debugging by visualizing the model’s worst errors
-        - visualizing the incorrect training set transcriptions that the model gave the highest conﬁdence
-- last performance percentage points came from adjusting hyperparameters - making the model larger while maintaining some restrictions on its computational cost
-# Weights & Biases Sweeps Tutorial
-- W&B Sweeps to create an organized and efficient way to automatically search through combinations of hyperparameter values
-- 3 simple steps to running:
-    - define the sweep: creating a dictionary or a YAML file that specifies the parameters to search through, the search strategy, the optimization metric et all
-    - initialize the sweep: with one line of code we initialize the sweep and pass in the dictionary of sweep configurations: sweep_id = wandb.sweep(sweep_config)
-    - run the sweep agent: call wandb.agent() and pass the sweep_id to run, along with a function that defines your model architecture and trains it: wandb.agent(sweep_id, function=train)
-- Before starting:
-    - pip install wandb -Uq, import wandb, wandb.login()
-1. Define the sweep
-    - must be in a nested dictionary if you start a sweep in a Jupyter Notebook. If you run a sweep within the command line, you must specify your sweep config with a YAML file
-    Pick a search method
-        - specify a hyperparameter search method within your configuration dictionary: grid, random, Bayesian search
-        - specify a metric that you want to optimize for
-    Specify hyperparameters to search through
-        - specify one or more hyperparameter names to the parameter key and specify one or more hyperparameter values for the value key
-        - values you search through for a given hyperparamter depend on the type of hyperparameter you are investigating
-        - track a parameter but not vary its value: add the hyperparameter to your sweep configuration and specify the exact value that you want to use
-2. Initialize the sweep
-    - W&B uses a Sweep Controller to manage sweeps on the cloud or locally across one or more machines
-    - component that actually executes a sweep = sweep agent. Activated on local machine
-    - activate a sweep controller with the wandb.sweep method:
-        sweep_id = wandb.sweep(sweep_config, project="pytorch-sweeps-demo")
-        - returns a sweep_id that you will use at a later step to activate your sweep
-3. Define your machine learning code
-    - before executing sweep, define the training procedure that uses the hyperparameter values you want to try
-    - key to integrating W&B Sweeps into your training code is to ensure that, for each training experiment, training logic can access the hyperparameter values you defined in your sweep configuration
-    W&B Python SDK methods in train:
-        - wandb.init(): Initialize a new W&B run. Each run is a single execution of the training function
-        - wandb.config: Pass sweep configuration with the hyperparameters you want to experiment with
-        - wandb.log(): Log the training loss for each epoch
-4. Activate sweep agents
-    - responsible for running an experiment with a set of hyperparameter values that you defined in your sweep configuration
-    - Create sweep agents with the wandb.agent method. Provide the following:
-        - sweep the agent is a part of (sweep_id)
-        - function the sweep is supposed to run
-        - (optionally) How many configs to ask the sweep controller for (count)
-Visualize sweep results
-- Parallel Coordinates Plot
-    - maps hyperparameter values to model metrics
-    - useful for honing in on combinations of hyperparameters that led to the best model performance
-- Hyperparameter Importance Plot
-    - surfaces which hyperparameters were the best predictors of your metrics
-    - report feature importance (from a random forest model) and correlation (implicitly a linear model)
+# Attention is all you need
+Transformer based solely on attention mechanisms, dispensing with recurrence and convolutions entirely
+More parallelizable and requiring significantly less time to train
+1 - Introduction
+- fundamental constraint of sequential computation - parralelization 
+- Attention mechanisms allow modeling of dependencies without regard to their distance in the input or output sequences
+- Transformer relies on an attention mechanism to draw global dependencies between input and output
+    - allows for significantly more parallelization and can reach a new state of the art in translation quality after limited training
+2 - Background
+- Tranformer operations required to relate signals from two arbitrary input or output positions is constant
+- Self-attention = an attention mechanism relating different positions of a single sequence in order to compute a representation of the sequence
+- End-to-end memory networks are based on a recurrent attention mechanism - language modeling tasks
+3 -  Model Architecture
+- Encoder maps an input sequence of symbol representations (x1, ..., xn) to a sequence of continuous representations z = (z1, ..., zn). Given z, the decoder then generates an output sequence (y1, ..., ym) of symbols one element at a time
+    - Transformer follows this overall architecture using stacked self-attention and point-wise, fully connected layers for both the encoder and decoder
+3.1 - Encoder & Decoder Stacks
+- Encoder: a stack of N = 6 identical layers
+    - Each layer has two sub-layers. First: multi-head self-attention mechanism, & second: simple, positionwise fully connected feed-forward network
+        - Employ a residual connection around each of the two sub-layers, followed by layer normalization
+            - Output of each sub-layer is LayerNorm(x + Sublayer(x)), where Sublayer(x) is the function implemented by the sub-layer itself
+        - All sub-layers produce output dimension = 512
+- Decoder: stack of N = 6 identical layers
+    - Inserts a third sub-layer, which performs multi-head attention over the output of the encoder stack
+    - Modify the self-attention sub-layer in the decoder stack to prevent positions from attending to subsequent positions
+    - Ensures that the predictions for position i can depend only on the known outputs at positions less than i.
+3.2 - Attention
+- Function can be described as mapping a query & a set of key-value pairs to an output, where the query, keys, values, & output are all vectors
+- Output is computed as a weighted sum, weight assigned to each value is computed by a compatibility function of the query with the corresponding key
+3.2.1 - Scaled Dot-Product Attention
+- Input consists of queries and keys of dimension dk, & values of dimension dv
+- Compute the dot products of the query with all keys, divide each by √dk, & apply a softmax function to obtain the weights on the values
+- Compute the attention function on a set of queries simultaneously, packed together into a matrix Q. The keys and values are also packed together into matrices K and V
+    - Compute matrix of outputs: Attention(Q, K, V ) = softmax(QK^T/√dk)V
+- Dot-product attention is identical to our algorithm, except for the scaling factor of 1/√dk
+    - Much faster and more space-efficient in practice than additive attention
+    - Counteract dot products growing large in magnitude with large values of dk, pushing the softmax function into regions where it has extremely small gradients through Scaled DPA
+3.2.2 - Multi-Head Attention
+- Beneficial to linearly project the queries, keys and values h times with different, learned linear projections to dk, dk and dv dimensions, respectively
+- Perform the attention function in parallel on each projected versions of queries, yielding dv-dimensional output values
+    - Outputs concatenated & then projected, resulting in final values
+- Allows the model to jointly attend to information from different representation subspaces at different positions
+- In this work employed h = 8 parallel attention layers & used dk = dv = dmodel/h = 64
+3.2.3 - Applications of Attention in our Model
+- Transformer uses multi-head attention in three different ways:
+    - "encoder-decoder attention" layers, queries come from the previous decoder layer, and the memory keys and values come from the output of the encoder
+        - allows every position in the decoder to attend over all positions in the input sequence
+    - Encoder contains self-attention layers
+        - In a self-attention layer all of the keys, values and queries come from the same place
+        - Each position in the encoder can attend to all positions in the previous layer of the encoder
+    - Self-attention layers in the decoder allow each position in the decoder to attend to all positions in the decoder up to and including that position
+        - Need to prevent leftward information flow in the decoder to preserve the auto-regressive property
+3.3 - Position-wise Feed-Forward Networks
+- Each layer in encoder & decoder contains a fully connected feed-forward network, applied to each position separately and identically
+    - Consists of two linear transformations with a ReLU activation in between
+    - FFN(x) = max(0, xW1 + b1)W2 + b2
+- Linear transformations are the same across different positions, but use different parameters from layer to layer
+    - Ex. dimensionality of input and output is dmodel = 512, and the inner-layer has dimensionality df f = 2048
+3.4 - Embeddings and Softmax
+In their model:
+- Use learned embeddings to convert the input tokens and output tokens to vectors of dimension dmodel
+- Use the usual learned linear transformation and softmax function to convert the decoder output to predicted next-token probabilities.
+- Share the same weight matrix between the two embedding layers and the pre-softmax linear transformation
+    - Multiply weights by √dmodel in embedding layers
+3.5 - Positional Encoding
+- Must inject some information about the relative or absolute position of the tokens in the sequence for model to make use of the order of the sequence
+    - Add "positional encodings" to the input embeddings at the bottoms of the encoder and decoder stacks
+        - same dimension dmodel as the embeddings, so that the two can be summed
+        - Choices of positional encodings: learned & fixed
+    - Each dimension of the positional encoding corresponds to a sinusoid
+        - Sinusoidal may allow the model to extrapolate to sequence lengths longer than the ones encountered during training
+4 - Why Self-Attention
+- Computational complexity per layer
+    - Self-attention layers are faster than recurrent layers when the sequence length n is smaller than the representation dimensionality d
+        - most often the case with sentence representations
+- Amount of computation that can be parallelized, measured by min number of sequential operations required
+- Path length between long-range dependencies in the network
+    - Learning long-range dependencies is a key challenge in many sequence transduction tasks
+    - Factor affecting the ability to learn such dependencies is length of paths forward and backward signals have to traverse in the network – shorter the path, easier it is to learn long-range dependencies
+        - Compare the maximum path length between any two input and output positions in networks composed of the different layer types
+- Could yield more interpretable models
+5.2 - Hardware & Scheduling 
+- Trained the base models for a total of 100,000 steps or 12 hours
+- Big models were trained for 300,000 steps (3.5 days).
+5.3 - Optimizer
+- Used the Adam optimizer with β1 = 0.9, β2 = 0.98 and ϵ = 10−9 . Varied the learning rate over the course of training, according to the formula:
+    - lrate = dmodel-0.5* min(step_num-0.5, step_num * warmup_steps-1.5)
+    - Corresponds to increasing the learning rate linearly for the first warmup_steps training steps, and decreasing it thereafter proportionally to the inverse square root of the step number
+    - Used warmup_steps = 4000
+5.4 - Regularization
+- Residual Dropout
+    - apply dropout to the output of each sub-layer, before it is added to the sub-layer input and normalized
+    - apply dropout to the sums of the embeddings and the positional encodings in both the encoder and decoder stacks
+    - base model, rate of Pdrop = 0.1
+- Label Smoothing
+    - employed label smoothing of value ϵls = 0.1
+        - Hurts perplexity but improves accuracy
+6.1 - Machine Translation
+- Big transformer model outperforms prior reported models, at a fraction of the training cost 
+6.2 - Model Variations
+- Used beam search 
+- Bigger models are better, and dropout is very helpful in avoiding over-fitting.
+6.3 English Constituency Parsing
+- Evaluating generalization to other tasks
+- Increased the maximum output length to input length + 300. We used a beam size of 21 and α = 0.3
+# Pytorch Transformer
+- Architecture based on prior paper
+- https://github.com/pytorch/examples/tree/main/word_language_model → apply nn.Transformer module for the word language model
+- forward(...) → Take in and process masked source/target sequences. Returns a tensor
+- https://docs.pytorch.org/docs/stable/generated/torch.nn.TransformerEncoderLayer.html#torch.nn.TransformerEncoderLayer
+# Deep Speech 2
+End-to-end learning allows us to handle a diverse variety of speech including noisy environments, accents and different languages
+1 Introduction
+- Employ a spectrum of deep learning techniques: capturing large training sets, training larger models with high performance computing, and methodically exploring the space of neural network architectures
+    - Able to reduce error rates & recognize Mandarin speech w high accuracy
+    - Single engine must learn to be able to handle most applications with only minor modifications and able to learn new languages from scratch without dramatic changes
+- Three crucial components: the model architecture, large labeled training datasets, and computational scale
+- Neural networks trained with the Connectionist Temporal Classification (CTC) loss function to predict speech transcriptions from audio
+- Deep learning systems benefit greatly from large quantities of training data → usually requires the use of larger models
+2 Related Work
+- Two methods are currently used to map variable length audio sequences directly to variable length transcriptions:
+    - RNN encoder-decoder paradigm uses an encoder RNN to map the input to a fixed length vector and a decoder network to expand the fixed length vector into a sequence of output predictions 
+    - Adding attentional mechanism to the decoder greatly improves performance of the system
+3 Model Architecture
+- Increase the model capacity via depth to learn from large datasets
+    - Up to 11 layers including many bidirectional recurrent layers and convolutional layers
+- Use Batch Normalization for RNNs and novel optimization curriculum SortaGrad
+- Exploit long strides between RNN inputs to reduce computation per example by a factor of 3
+3.1 Preliminaries
+- Goal of the RNN is to convert an input sequence x into a final transcription y
+- RNN makes a prediction over characters, p(lt|x), where lt is either a character in the alphabet or the blank symbol
+- RNN model is composed of several layers of hidden units
+    - Experimentations consist of one or more convolutional layers, followed by one or more recurrent layers, followed by one or more fully connected layers
+- Use the clipped rectified linear (ReLU) function σ(x) = min{max{x, 0}, 20} as our nonlinearity
+- Given an input-output pair (x, y) and the current parameters of the network θ, we compute the loss function L(x, y; θ) and its derivative with respect to the parameters of the network
+    - derivative used to update the network parameters through the backpropagation through time algorithm
+- Integrate a language model in a beam search decoding
+3.2 Batch Normalization for Deep RNNs
+- To efficiently scale models: increase the depth of the networks by adding more hidden layers, rather than making each layer larger
+    - Explore Batch Normalization (BatchNorm) as a technique to accelerate training for such networks since they often suffer from optimization issues
+- Two methods of extending BatchNorm to bidirectional RNNs:
+    - transformation immediately before every non-linearity
+        mean and variance statistics are accumulated over a single time-step of the minibatch. Does not lead to improvements in optimization
+Sequence-wise normalization → overcomes issues, for each hidden unit, we compute the mean and variance statistics over all items in the minibatch over the length of the sequence
+BatchNorm difficult to implement for a deployed ASR system, since it is often necessary to evaluate a single utterance in deployment rather than a batch
+store a running average of the mean and variance for the neuron collected during training, and use these for evaluation in deployment → can evaluate a single utterance at a time with better results than evaluating with a large batch
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
