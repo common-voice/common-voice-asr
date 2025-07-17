@@ -1,10 +1,11 @@
 import torch.nn as nn
+import torch
 
 
 class CTC_CNNEncoder(nn.Module):
-    def __init__(self, in_channels=1, hidden_dim=32, num_classes=31, input_freq_bins=32, transformer=False):
+    def __init__(self, in_channels=1, hidden_dim=32, num_classes=31, input_freq_bins=80, layer=False):
         super().__init__()
-        self.transformer = transformer
+        self.layer = layer
         self.conv_block1 = nn.Sequential(
             nn.Conv2d(in_channels, hidden_dim, kernel_size=3, padding=1),
             nn.BatchNorm2d(hidden_dim),
@@ -23,20 +24,25 @@ class CTC_CNNEncoder(nn.Module):
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU()
         )
-        
-        if transformer:
+        if layer:
             self.output_channels = hidden_dim
             self.downsampled_freq = input_freq_bins // 4
         else:
             self.classifier = nn.LazyLinear(num_classes)
 
     def forward(self, x):
+        print("[DEBUG] original input to encoder:", x.shape)
         x = self.conv_block1(x)
         x = self.conv_block2(x)
         x = self.conv_block3(x)
-        x = x.permute(0, 3, 1, 2)
-        x = x.flatten(2)  # (T, N, C)
-        if not self.transformer:
+        print("[DEBUG] after conv blocks, before permute: ", x.shape)
+        if self.layer:
+            x = x.permute(0, 3, 1, 2)
+        else:
+            x = x.permute(0, 2, 1, 3)
+        x = x.flatten(2)
+        print(f"[DEBUG] CNN output shape before Linear: {x.shape}")
+        if not self.layer:
             x = self.classifier(x)
         return x
 

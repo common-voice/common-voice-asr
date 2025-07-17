@@ -57,7 +57,15 @@ def parse_command_args():
     parser.add_argument('--lm-weight', type=float, default=3.23, help="Learning model weight for beam search decoder")
     parser.add_argument('--word-score', type=float, default=-0.26, help="Word score for beam search decoder")
     parser.add_argument('--sample_size', type=int, default=0, help="Specifying sample size from the dataset")
+    parser.add_argument('--d_model', type=int, default=512, help="Number of expected features in the encoder/decoder inputs")
+    parser.add_argument('--nhead', type=int, default=8, help="Number of heads in the multiheadattention models")
+    parser.add_argument('--dim_feedforward', type=int, default=2048, help="Dimension of the feedforward network model")
+    parser.add_argument('--nlayers', type=int, default=6, help="Number of layers in the decoder")
+    parser.add_argument('--lstm_hidden', type=int, default=256, help="Number of hidden dimensions for LSTM layer of transformer model")
+    parser.add_argument('--lstm_layers', type=int, default=1, help="Number of lstm layers in model")
+    parser.add_argument('--dropout', type=float, default=0.5, help="Dropout value for transformer model")
     parser.add_argument('--sample_spect_folder', type=str, default=None, help='Train & validate with a mel-spectogram sweep')
+    parser.add_argument('--debug_sample', action='store_true', help="Deugging with single training loop on one sample")
     return parser.parse_args()
 
 
@@ -153,6 +161,13 @@ def get_val_err(references, hypotheses, count, total_wer, total_cer, batch_idx):
         total_cer += min(torchaudio.functional.edit_distance(list(ref), list(hyp)) / max(len(ref), 1), 1)
         count += 1
     return total_wer, total_cer, count
+
+
+def entropy_loss(log_probs):
+    probs = log_probs.exp()
+    entropy = -torch.mean(torch.sum(probs * log_probs, dim=-1))
+    return entropy.mean()
+
         
 def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_interval, decoder, corpus, sample_size):
     torch.autograd.set_detect_anomaly(True)
@@ -160,6 +175,7 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
     losses = []
     count = 0
     total_wer = 0.0
+    seen_samples = 0
     
     total_batches = len(train_loader)
     log_percent = 5
@@ -168,50 +184,116 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
     scaler = torch.amp.GradScaler('cuda')
 
     with Progress() as progress:
-        pbar = progress.add_task(f"[green]Epoch {epoch}...", total=total_batches)
-
+        total_samples = len(train_loader.dataset)
+        pbar = progress.add_task(f"[green]Epoch {epoch}...", total=total_samples)
         for batch_idx, (spects, targets, input_lengths, target_lengths) in enumerate(train_loader):
+            batch_size = spects.size(0)
+            seen_samples += batch_size
             spects = spects.to(device)
             targets = targets.to(device)
+            if torch.isnan(targets).any():
+                    print("NaN targets detected!")
             input_lengths = input_lengths.to(device)
             target_lengths = target_lengths.to(device)
+            
+            print("Input length:", input_lengths.tolist())
+            print("Target length:", target_lengths.tolist())
+            # print("Target tokens:", targets.tolist())
+            for i_len, t_len in zip(input_lengths.tolist(), target_lengths.tolist()):
+                assert i_len >= t_len, f"Target too long! Input len: {i_len}, Target len: {t_len}"
 
             optimizer.zero_grad()
             with torch.amp.autocast('cuda'):
                 outputs = model(spects)
-                outputs = outputs.to(torch.float32)
-                outputs = torch.clamp(outputs, min=-50, max=50)
-
+                outputs = outputs.clone()
+                print("Logits mean/std:", outputs.mean().item(), outputs.std().item())
+                if torch.isnan(outputs).any():
+                    print("NaN outputs detected!")
+                # outputs = torch.clamp(outputs, min=-50, max=50)
+                # print("Raw outputs mean/std:", outputs.mean().item(), outputs.std().item())
+                    
                 log_probs = F.log_softmax(outputs, dim=2)
-                log_probs = log_probs.transpose(0, 1)
+                if log_probs.shape[0] == input_lengths.shape[0]:
+                    log_probs = log_probs.transpose(0, 1)
+                # print("DEBUG: raw log_probs: ", log_probs)
+                print("log_probs variance (time dim):", log_probs.var(dim=0).mean().item())
+                probs = log_probs.exp()
+                blank_probs = probs[:, :, 0]  # assuming index 0 is blank
+                print("Mean blank prob:", blank_probs.mean().item())
+                decoded_indices = log_probs.argmax(dim=-1)  # [T, B]
+                print(decoded_indices.T[0])
+                """
+                # print("Predicted token indices:", log_probs[:, 0].tolist())
+                print("Target tensor max:", targets.max().item())
+                print("Num classes:", log_probs.shape[2])
+                print("Sample log prob distribution:", F.softmax(outputs, dim=2)[0,0,:])
+                
+                print("Log prob sample max:", log_probs[0, 0].max().item())
+                print("Log prob sample min:", log_probs[0, 0].min().item())
+                """
+                
+                T, B, V = log_probs.shape
+                """
+                print("Spectrogram mean/std (batch):", spects.mean().item(), spects.std().item())
+                print(f"[DEBUG] input_lengths shape: {input_lengths.shape}, values: {input_lengths}")
+                print(f"[DEBUG] target_lengths shape: {target_lengths.shape}, values: {target_lengths}")
+                print(f"[DEBUG] targets shape: {targets.shape}")
+                print(f"[DEBUG] outputs shape: {outputs.shape}")      # (B, T, V)
+                print(f"[DEBUG] log_probs shape: {log_probs.shape}")  # (T, B, V)
+                print(f"[DEBUG] batch size (from log_probs): {B}")
+                print(f"[DEBUG] input_lengths size: {input_lengths.size(0)}")
+                # assert input_lengths.size(0) == B, "[ERROR] input_lengths must match batch size!"
+                """
+
                 max_output_len = log_probs.size(0)
                 input_lengths = torch.clamp(input_lengths, max=max_output_len)
+                # print("[DEBUG] input_lengths:", input_lengths)
+                # print("[DEBUG] target_lengths:", target_lengths)
 
                 loss = criterion(log_probs, targets, input_lengths, target_lengths)
+                alpha = min(2.0, 0.2 * epoch)
+                # loss = loss + (alpha * entropy_loss(log_probs))
+                
             losses.append(loss.item())
             torch.cuda.synchronize()
             if corpus:
                 if batch_idx % log_interval_batches == 0:
-                    hypotheses = decoder(log_probs.transpose(0, 1))
+                    lp_bt = log_probs.permute(1, 0, 2).contiguous()  
+                    hypotheses = decoder(lp_bt)
                     references = get_references(target_lengths, targets)
+                    print("DEBUG")
+                    print(type(hypotheses), hypotheses)
+                    print(type(references), references)
                     total_wer, count = get_train_wer(references, hypotheses, count, total_wer, batch_idx)
 
             else:
-                hypotheses = decoder(log_probs.transpose(0, 1))
+                log_probs_bt = log_probs.transpose(0, 1).contiguous()
+                hypotheses = decoder(log_probs_bt)
                 references = get_references(target_lengths, targets)
+                print("DEBUG")
+                print(type(hypotheses), hypotheses)
+                print(type(references), references)
                 total_wer, count = get_train_wer(references, hypotheses, count, total_wer, batch_idx)
 
             if batch_idx % log_interval_batches == 0:
-                percent = 100. * batch_idx / total_batches
-                print(f"Train Epoch: {epoch} [{batch_idx * len(spects)}/{len(train_loader.dataset)} "
-                      f"({percent:.0f}%)]\tLoss: {loss.item():.6f}")
+                print(f"Train Epoch: {epoch} Loss: {loss.item():.6f}")
             
             scaler.scale(loss).backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             scaler.step(optimizer)
             scaler.update()
-            
-            progress.advance(pbar)
+
+            progress.advance(pbar, batch_size)
+            total_norm = 0.0
+            for name, param in model.named_parameters():
+                if param.grad is None:
+                    print(f"{name} grad is None")
+            for p in model.parameters():
+                if p.grad is not None:
+                    param_norm = p.grad.data.norm(2)
+                    total_norm += param_norm.item() ** 2
+            # print(f"[DEBUG] Grad norm: {total_norm ** 0.5}")
+            # print(f"[DEBUG] Step loss: {loss.item():.4f}")
 
     avg_loss = sum(losses)/len(losses)
     avg_wer = total_wer / count if count > 0 else 1.0
@@ -224,6 +306,7 @@ def ctc_validate(model, val_loader, criterion, device, decoder, epoch, corpus, s
     count = 0
     total_wer = 0.0
     total_cer = 0.0
+    seen_samples = 0
     
     scaler = torch.amp.GradScaler('cuda')
     
@@ -232,9 +315,12 @@ def ctc_validate(model, val_loader, criterion, device, decoder, epoch, corpus, s
     log_interval_batches = max(1, int((log_percent / 100) * total_batches))
     
     with Progress() as progress:
-        pbar = progress.add_task(f"[green]Epoch {epoch}...", total=total_batches)
+        total_samples = len(val_loader.dataset)
+        pbar = progress.add_task(f"[green]Epoch {epoch}...", total=total_samples)
         with torch.no_grad():
             for batch_idx, (spects, targets, input_lengths, target_lengths) in enumerate(val_loader):
+                batch_size = spects.size(0)
+                seen_samples += batch_size
                 with torch.amp.autocast('cuda'):
                     spects = spects.to(device)
                     targets = targets.to(device)
@@ -242,27 +328,44 @@ def ctc_validate(model, val_loader, criterion, device, decoder, epoch, corpus, s
                     target_lengths = target_lengths.to(device)
 
                     outputs = model(spects)
+                    outputs = outputs.clone()
                     log_probs = F.log_softmax(outputs, dim=2)
-                    log_probs = log_probs.permute(1, 0, 2)
+                    if log_probs.shape[0] == input_lengths.shape[0]:
+                        log_probs = log_probs.transpose(0, 1)
                     max_output_len = log_probs.size(0)
                     input_lengths = torch.clamp(input_lengths, max=max_output_len)
-
+                    
+                    decoded_indices = log_probs.argmax(dim=-1)
+                    # print("Decoded indices:", decoded_indices)
+                    T, B, V = log_probs.shape
+                    """
+                    print(f"[DEBUG] batch size (from log_probs): {B}")
+                    print(f"[DEBUG] input_lengths size: {input_lengths.size(0)}")
+                    assert input_lengths.size(0) == B, "[ERROR] input_lengths must match batch size!"
+                    """
+                    
                     loss = criterion(log_probs, targets, input_lengths, target_lengths)
+                    alpha = min(1.0, 0.2 * epoch)
+                    # loss = loss + (alpha * entropy_loss(log_probs))
+                    
                 losses.append(loss.item())
                 torch.cuda.synchronize()
                 if corpus and sample_size == 0:
                     if batch_idx % 8 == 0:
-                        hypotheses = decoder(log_probs.transpose(0, 1))
+                        lp_bt = log_probs.permute(1, 0, 2).contiguous()  
+                        hypotheses = decoder(lp_bt)
                         references = get_references(target_lengths, targets)
                         total_wer, total_cer, count = get_val_err(references, hypotheses, count, total_wer, total_cer, batch_idx)
                 else:
-                    hypotheses = decoder(log_probs.transpose(0, 1))
+                    lp_bt = log_probs.permute(1, 0, 2).contiguous()  
+                    hypotheses = decoder(lp_bt)
                     references = get_references(target_lengths, targets)
+                    print("Reference:", references[0])
+                    print("Hypothesis:", hypotheses[0])
                     total_wer, total_cer, count = get_val_err(references, hypotheses, count, total_wer, total_cer, batch_idx)
                 if batch_idx % log_interval_batches == 0:
-                    percent = 100. * batch_idx / total_batches
-                    print(f"Validation Epoch: {epoch} [{batch_idx * len(spects)}/{len(val_loader.dataset)} ({percent:.0f}%)]")
-                progress.advance(pbar)
+                    print(f"Validation Epoch: {epoch}")
+                progress.advance(pbar, batch_size)
 
     avg_loss = sum(losses) / len(losses)
     avg_wer = total_wer / count if count > 0 else 1.0
@@ -272,7 +375,7 @@ def ctc_validate(model, val_loader, criterion, device, decoder, epoch, corpus, s
 
 
 def setup_encoder_and_data(mini, manifest_path, spect_dir, model_type, hidden_dim, d_model, nhead, dim_ff, nlayers, lstm_hidden,
-                           lstm_layers, dropout):
+                           lstm_layers, dropout, debug_sample):
     apply = False
     if mini:
         df = pd.read_csv(manifest_path)
@@ -291,6 +394,23 @@ def setup_encoder_and_data(mini, manifest_path, spect_dir, model_type, hidden_di
             collate = cel_rnn_collate_fn
         else:
             raise ValueError(f"Unknown model type: {model_type}")
+    elif debug_sample:
+        df = pd.read_csv(manifest_path)
+        dataset = CTC_MiniCVDataset(manifest_path, spect_dir)
+        dataset = torch.utils.data.Subset(dataset, [0])
+        num_classes = len(tokens)
+        if model_type == "cnn":
+            model = CTC_CNNEncoder(hidden_dim=hidden_dim)
+            collate = ctc_collate_fn
+            apply = False
+        elif model_type == "rnn":
+            model = CTC_RNNEncoder(hidden_size=hidden_dim)
+            collate = ctc_rnn_collate_fn
+            apply = True
+        elif model_type == "transformer":
+            model = HybridTransformer(input_dim=N_MELS, vocab_size=len(tokens), d_model=d_model, nhead=nhead, dim_feedforward=dim_ff,
+                                      nlayers=nlayers, lstm_hidden=lstm_hidden, lstm_layers=lstm_layers, dropout=dropout)
+            collate = transformer_collate_fn
     else:
         df = pd.read_csv(manifest_path)
         dataset = CTC_MiniCVDataset(manifest_path, spect_dir)
@@ -380,6 +500,11 @@ def run_cel(epochs, model, train_loader, val_loader, optimizer, criterion, devic
         print(f"Train loss: {train_loss:.4f}")
         print(f"Val loss: {val_loss:.4f}")
         print(f"Val accuracy: {val_acc:.4f}")
+        
+
+def print_grad_hook(grad):
+    print("Gradients on classifier weight:", grad.norm())
+
 
 
 def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False, greedy: bool = False, 
@@ -387,7 +512,7 @@ def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False
          batch_size: int = 4, hidden_dim: int = 64, test_sweep: bool = False, lm_weight: float = 3.23, 
          word_score: float = -0.26, sample_size: int = 0, 
          d_model: int = 512, n_head: int = 8, dim_feedforward: int = 2048, nlayers: int = 6, lstm_hidden: int = 256, 
-         lstm_layers: int = 1, dropout: float = 0.5, sample_spect_folder: str = None):
+         lstm_layers: int = 1, dropout: float = 0.5, sample_spect_folder: str = None, debug_sample: bool = False):
 
     log_dir = os.path.join("neural_networks", logdir)
     log_path = os.path.join(BASE_DIR, log_dir)
@@ -399,7 +524,7 @@ def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False
         df, dataset, num_classes, apply, model, collate = setup_encoder_and_data(mini,
                                                                                  manifest_path, spect_dir, model_type, hidden_dim,
                                                                                  d_model, n_head, dim_feedforward, nlayers,
-                                                                                 lstm_hidden, lstm_layers, dropout)
+                                                                                 lstm_hidden, lstm_layers, dropout, debug_sample)
     elif corpus:
         train_manifest_path = os.path.join(BASE_DIR, "corpus_data/cleaned_train.csv")
         train_spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/train_cv")
@@ -409,12 +534,13 @@ def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False
                                                                                          train_manifest_path, train_spect_dir, 
                                                                                          model_type, hidden_dim, d_model, n_head,
                                                                                          dim_feedforward, nlayers, lstm_hidden,
-                                                                                         lstm_layers, dropout)
+                                                                                         lstm_layers, dropout, debug_sample)
         val_df, val_set, num_classes, apply, model, collate = setup_encoder_and_data(mini,
                                                                                      dev_manifest_path, dev_spect_dir, 
                                                                                      model_type, hidden_dim, d_model, n_head,
                                                                                      dim_feedforward, nlayers, lstm_hidden,
-                                                                                     lstm_layers, dropout)
+                                                                                     lstm_layers, dropout, debug_sample)
+        print(train_df["transcript"].iloc[0])
     elif sample_spect_folder is not None:
         sample_spect = True
         train_manifest_path = os.path.join(BASE_DIR, "corpus_data/cleaned_train.csv")
@@ -425,12 +551,26 @@ def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False
                                                                                          train_manifest_path, train_spect_dir, 
                                                                                          model_type, hidden_dim, d_model, n_head,
                                                                                          dim_feedforward, nlayers, lstm_hidden,
-                                                                                         lstm_layers, dropout)
+                                                                                         lstm_layers, dropout, debug_sample)
         val_df, val_set, num_classes, apply, model, collate = setup_encoder_and_data(mini,
                                                                                      dev_manifest_path, dev_spect_dir, 
                                                                                      model_type, hidden_dim, d_model, n_head,
                                                                                      dim_feedforward, nlayers, lstm_hidden,
-                                                                                     lstm_layers, dropout)
+                                                                                     lstm_layers, dropout, debug_sample)
+    elif debug_sample:
+        train_manifest_path = os.path.join(BASE_DIR, "corpus_data/cleaned_train.csv")
+        train_spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/train_cv")
+        df, dataset, num_classes, apply, model, collate = setup_encoder_and_data(mini, train_manifest_path, train_spect_dir, 
+                                                                                 model_type, hidden_dim, d_model, n_head,
+                                                                                 dim_feedforward, nlayers, lstm_hidden,
+                                                                                 lstm_layers, dropout, debug_sample)
+        print("DEBUG MODE ENABLED - One sample only")
+        spect, transcript, *_ = dataset[0]
+        print("Spectrogram shape:", spect.shape)
+        print("Transcript indices:", transcript)
+        print("Transcript string:", ''.join([tokens[i] for i in transcript.tolist()]))
+        train_set = dataset
+        val_set = dataset
     else:
         mini = True
         manifest_path = BASE_DIR / "data" / "manifest.csv"
@@ -438,35 +578,48 @@ def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False
         df, dataset, num_classes, apply, model, collate = setup_encoder_and_data(mini,
                                                                                  manifest_path, spect_dir, model_type, hidden_dim,
                                                                                  d_model, n_head, dim_feedforward, nlayers, 
-                                                                                 lstm_hidden, lstm_layers, dropout)
-    if mini or full_mini:
-        train_len = int(0.8 * total_len)
-        val_len = total_len - train_len
-        train_set, val_set = random_split(dataset, [train_len, val_len])
-    
-    if not sample_size == 0:
-        if corpus:
-            total_train = len(train_set)
-            total_val = len(val_set)
-            data_len = total_train + total_val
-        else: 
-            data_len = len(dataset)
-        if sample_size > data_len:
-            print(f"Sample size cannot be greater than {data_len}")
-            return
-        train_sample = round(sample_size * 0.85)
-        val_sample = sample_size - train_sample
-        if val_sample > total_val:
-            print(f"The 15% sample size split for validation, currently {val_sample}, cannot be greater than {total_val}")
-            return
-        train_indices = random.sample(range(total_train), k=train_sample)
-        val_indices = random.sample(range(total_val), k=val_sample) if total_val > 0 else []
-        train_set = [train_set[i] for i in train_indices]
-        val_set = [val_set[i] for i in val_indices]
+                                                                                 lstm_hidden, lstm_layers, dropout, debug_sample)
+    if debug_sample:
+        print("Skipping sample size logic for debugging")
+    else:
+        if mini or full_mini:
+            total_len = len(dataset)
+            train_len = int(0.8 * total_len)
+            val_len = total_len - train_len
+            train_set, val_set = random_split(dataset, [train_len, val_len])
+
+        if not sample_size == 0:
+            if corpus:
+                total_train = len(train_set)
+                total_val = len(val_set)
+                data_len = total_train + total_val
+            else: 
+                data_len = len(dataset)
+            if sample_size > data_len:
+                print(f"Sample size cannot be greater than {data_len}")
+                return
+            train_sample = round(sample_size * 0.85)
+            val_sample = sample_size - train_sample
+            if val_sample > total_val:
+                print(f"The 15% sample size split for validation, currently {val_sample}, cannot be greater than {total_val}")
+                return
+            train_indices = random.sample(range(total_train), k=train_sample)
+            val_indices = random.sample(range(total_val), k=val_sample) if total_val > 0 else []
+            train_set = [train_set[i] for i in train_indices]
+            val_set = [val_set[i] for i in val_indices]
         
 
     train_loader = DataLoader(train_set, batch_size=batch_size, collate_fn=collate, shuffle=True, 
                               num_workers=4, pin_memory=True, prefetch_factor=2)
+    
+    # More robust way to handle different batch formats
+    for batch in train_loader:
+        spec, label = batch[0], batch[1]  # First two elements are always spec and label
+        print(f"Spec shape: {spec.shape}, Label shape: {label.shape}")
+        if len(batch) == 4:  # CTC case has additional elements
+            input_lengths, target_lengths = batch[2], batch[3]
+            print(f"Input lengths: {input_lengths.shape}, Target lengths: {target_lengths.shape}")
+        break
     val_loader = DataLoader(val_set, batch_size=batch_size, collate_fn=collate, num_workers=4, pin_memory=True, prefetch_factor=2)
 
     log_interval = 20
@@ -482,10 +635,11 @@ def main(check_data: bool = False, full_mini: bool = False, corpus: bool = False
         model = WrapEncoder(model, num_classes, apply)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
+    # model.classifier.weight.register_hook(print_grad_hook)
 
     writer = SummaryWriter(log_dir=log_path)
 
-    if full_mini or corpus:
+    if full_mini or corpus or debug_sample:
         criterion = nn.CTCLoss(blank=0, zero_infinity=True)
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0.0001)
         greedy = False
@@ -526,4 +680,4 @@ if __name__ == "__main__":
     main(args.check_data, args.full_mini, args.corpus, args.greedy, args.model_type, args.epochs, args.lr,
          args.logdir, args.batch_size, args.hidden_dim, args.test_sweep, args.lm_weight, args.word_score, 
          args.sample_size, args.d_model, args.nhead, args.dim_feedforward, args.nlayers, 
-         args.lstm_hidden, args.lstm_layers, args.dropout, args.sample_spect_folder)
+         args.lstm_hidden, args.lstm_layers, args.dropout, args.sample_spect_folder, args.debug_sample)

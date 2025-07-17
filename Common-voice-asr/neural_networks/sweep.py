@@ -74,7 +74,7 @@ def main(model: str = 'a', sample_spects: bool = False):
     if sample_spects:
         sweep_id = wandb.sweep(sweep_config_path_spects, project="week8_sweep_mels")
         function = sweep_train_modelA
-        wandb.agent(sweep_id, function, count=24)
+        wandb.agent(sweep_id, function, count=5)
     else:
         if model == 'a':
             sweep_id = wandb.sweep(sweep_config_path_a, project="week8_sweep_a")

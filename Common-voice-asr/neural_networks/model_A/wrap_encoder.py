@@ -8,11 +8,14 @@ class WrapEncoder(nn.Module):
         self.apply_head = apply_head
         self.num_classes = num_classes
         if self.apply_head:
-            self.head = nn.Linear(self.encoder.output_size, num_classes)
+            self.classifier = nn.Sequential(nn.Dropout(0.5), nn.Linear(self.encoder.output_size, num_classes))
+            # self.classifier = nn.Linear(self.encoder.output_size, num_classes)
+            # nn.init.xavier_uniform_(self.classifier.weight)
+            # nn.init.zeros_(self.classifier.bias)
         else:
-            self.head = nn.Identity()
+            self.classifier = nn.Identity()
 
     def forward(self, x):
         x = self.encoder(x)
-        x = self.head(x)
+        x = self.classifier(x)
         return x

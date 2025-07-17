@@ -11,7 +11,7 @@ class HybridTransformer(nn.Module):
         super().__init__()
         self.conv_layer = conv_layer
         if conv_layer:
-            self.cnn = CTC_CNNEncoder(hidden_dim=cnn_hidden, input_freq_bins=input_dim, transformer=True)
+            self.cnn = CTC_CNNEncoder(hidden_dim=cnn_hidden, input_freq_bins=input_dim, layer=True)
             input_dim = self.cnn.output_channels * self.cnn.downsampled_freq
         self.input_proj = nn.Linear(input_dim, d_model)
         
@@ -22,13 +22,14 @@ class HybridTransformer(nn.Module):
         
         self.lstm = nn.LSTM(input_size=d_model, hidden_size=lstm_hidden, num_layers=lstm_layers, bidirectional=True)
         
-        self.classifier = nn.Linear(lstm_hidden * 2, vocab_size)
+        # self.classifier = nn.Linear(lstm_hidden * 2, vocab_size)
+        self.classifier = nn.Sequential(nn.Dropout(dropout), nn.Linear(lstm_hidden * 2, vocab_size))
 
     def forward(self, x):
+        print("Input to encoder: ", x.shape)
         if self.conv_layer:
             x = self.cnn(x)
-        else:
-            x = x.squeeze(1).permute(0, 2, 1)
+        print("Before inputting to linear: ", x.shape)
         x = self.input_proj(x)
         x = self.pos_encoder(x)
         x = self.transformer(x)

@@ -1,6 +1,6 @@
 project: week8_sweep_mels
 name: week8_sweep_mels
-method: bayes
+method: random
 metric:
   name: min_val_wer
   goal: minimize
@@ -14,7 +14,7 @@ parameters:
   epochs: 
     values: [5]
   model_type: 
-    values: ["rnn"]
+    values: ["rnn", "cnn"] # trying different models
   full_mini: 
     values: [False]
   corpus: 
@@ -28,11 +28,12 @@ parameters:
   sample_size: 
     values: [1500]
   sample_spect_folder: 
-    values: ['sr16000_nfft1024_hop256_nmels128', 'sr16000_nfft1024_hop256_nmels80', 'sr16000_nfft1024_hop512_nmels128',
-    'sr16000_nfft1024_hop512_nmels80', 'sr16000_nfft2048_hop256_nmels128', 'sr16000_nfft2048_hop256_nmels80',
-    'sr16000_nfft2048_hop512_nmels128', 'sr16000_nfft2048_hop512_nmels80', 'sr16000_nfft512_hop256_nmels128',
-    'sr16000_nfft512_hop256_nmels80', 'sr16000_nfft512_hop512_nmels128', 'sr16000_nfft512_hop512_nmels80', 
-    'sr22050_nfft1024_hop256_nmels128', 'sr22050_nfft1024_hop256_nmels80', 'sr22050_nfft1024_hop512_nmels128', 
-    'sr22050_nfft1024_hop512_nmels80', 'sr22050_nfft2048_hop256_nmels128', 'sr22050_nfft2048_hop256_nmels80', 
-    'sr22050_nfft2048_hop512_nmels128', 'sr22050_nfft2048_hop512_nmels80', 'sr22050_nfft512_hop256_nmels128', 
-    'sr22050_nfft512_hop256_nmels80', 'sr22050_nfft512_hop512_nmels128', 'sr22050_nfft512_hop512_nmels80']
+    values: ['sr22050_nfft512_hop256_nmels128']
+    # ['sr16000_nfft1024_hop256_nmels128', 'sr16000_nfft1024_hop256_nmels80', 'sr16000_nfft1024_hop512_nmels128',
+    # 'sr16000_nfft1024_hop512_nmels80', 'sr16000_nfft2048_hop256_nmels128', 'sr16000_nfft2048_hop256_nmels80',
+    # 'sr16000_nfft2048_hop512_nmels128', 'sr16000_nfft2048_hop512_nmels80', 'sr16000_nfft512_hop256_nmels128',
+    # 'sr16000_nfft512_hop256_nmels80', 'sr16000_nfft512_hop512_nmels128', 'sr16000_nfft512_hop512_nmels80', 
+    # 'sr22050_nfft1024_hop256_nmels128', 'sr22050_nfft1024_hop256_nmels80', 'sr22050_nfft1024_hop512_nmels128', 
+    # 'sr22050_nfft1024_hop512_nmels80', 'sr22050_nfft2048_hop256_nmels128', 'sr22050_nfft2048_hop256_nmels80', 
+    # 'sr22050_nfft2048_hop512_nmels128', 'sr22050_nfft2048_hop512_nmels80', 'sr22050_nfft512_hop256_nmels128', 
+    # 'sr22050_nfft512_hop256_nmels80', 'sr22050_nfft512_hop512_nmels128', 'sr22050_nfft512_hop512_nmels80']
