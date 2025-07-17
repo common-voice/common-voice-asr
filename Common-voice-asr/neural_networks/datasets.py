@@ -109,21 +109,22 @@ def transformer_collate_fn(batch):
     return batch_tensor, concat_transcripts, input_lengths, target_lengths
 
 
-#  Collate_fn implementation for RNN w CTCLoss
 def ctc_rnn_collate_fn(batch):
-    spects, transcripts, input_length, target_length = zip(*batch)
+    spects, transcripts, input_lengths_raw, target_lengths_raw = zip(*batch)
     
-    # print(f"[DEBUG collate] raw input_length: {input_length}")
-    # print(f"[DEBUG collate] raw target_length: {target_length}")
+    # The CTC_RNNEncoder uses a CNN frontend that downsamples the time dimension by 4x.
+    DOWNSAMPLING_FACTOR = 4
     
-    input_lengths = torch.tensor(input_length, dtype=torch.long)
-    target_lengths = torch.tensor(target_length, dtype=torch.long)
+    # Calculate the correct sequence lengths for the CTC loss function
+    input_lengths = torch.tensor([l // DOWNSAMPLING_FACTOR for l in input_lengths_raw], dtype=torch.long)
+    target_lengths = torch.tensor(target_lengths_raw, dtype=torch.long)
 
+    # Use the existing padding function
     padded_spects = alt_padding(spects)
-
+    
+    # Stack into a single tensor for the batch. Output shape is (B, T, F)
     batch_tensor = torch.stack(padded_spects)
-    batch_tensor = batch_tensor.permute(1, 0, 2)
-
+    
     concat_transcripts = torch.cat(transcripts)
 
     return batch_tensor, concat_transcripts, input_lengths, target_lengths
@@ -134,16 +135,25 @@ def ctc_collate_fn(batch):
     filtered_batch = [
         (spect, transcript, input_length, target_length)
         for spect, transcript, input_length, target_length in batch
-        if transcript.shape[0] <= spect.shape[-1]
+        if transcript.shape[0] <= (spect.shape[-1] // 4) # Check against downsampled length
     ]
 
     if len(filtered_batch) == 0:
-        raise ValueError("All samples in batch were too long for their input lengths")
-    spects, transcripts, input_length, target_length = zip(*filtered_batch)
+        # It's better to return None and handle it in the training loop, or just skip.
+        print("WARNING: Skipping a batch because all samples were too long.")
+        return None, None, None, None
+
+    spects, transcripts, input_lengths_raw, target_lengths_raw = zip(*filtered_batch)
+
+    # Convert tuples to tensors
+    target_lengths = torch.tensor(target_lengths_raw, dtype=torch.long)
+    
+    # --- THIS IS THE CRITICAL FIX ---
+    # Calculate the model's output lengths by dividing by the downsampling factor (4)
+    input_lengths = torch.tensor([l // 4 for l in input_lengths_raw], dtype=torch.long)
+    # --- END CRITICAL FIX ---
 
     max_T = max(s.shape[0] for s in spects)
-    input_lengths = torch.tensor(input_length, dtype=torch.long)
-    target_lengths = torch.tensor(target_length, dtype=torch.long)
     padded_spects = []
 
     for spect in spects:
@@ -157,7 +167,10 @@ def ctc_collate_fn(batch):
         padded_spects.append(spect)
 
     batch_tensor = torch.stack(padded_spects)
-    batch_tensor = batch_tensor.unsqueeze(1)
+    # The shape should be (B, 1, F, T) for Conv2D, but your dataset returns (T, F).
+    # Let's permute and unsqueeze here to match the expected Conv2d input: (B, C, H, W) -> (B, 1, Freq, Time)
+    batch_tensor = batch_tensor.permute(0, 2, 1).unsqueeze(1) 
+    
     concat_transcripts = torch.cat(transcripts)
 
     return batch_tensor, concat_transcripts, input_lengths, target_lengths
