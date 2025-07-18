@@ -98,6 +98,7 @@ def alt_padding(spects):
 
 def transformer_collate_fn(batch):
     spects, transcripts, input_length, target_length = zip(*batch)
+    empty_batch = False
     input_lengths = torch.tensor(input_length, dtype=torch.long)
     target_lengths = torch.tensor(target_length, dtype=torch.long)
     
@@ -106,11 +107,12 @@ def transformer_collate_fn(batch):
     batch_tensor = torch.stack(padded_spects)
     concat_transcripts = torch.cat(transcripts)
     
-    return batch_tensor, concat_transcripts, input_lengths, target_lengths
+    return batch_tensor, concat_transcripts, input_lengths, target_lengths, empty_batch
 
 
 def ctc_rnn_collate_fn(batch):
     spects, transcripts, input_lengths_raw, target_lengths_raw = zip(*batch)
+    empty_batch = False
     
     # The CTC_RNNEncoder uses a CNN frontend that downsamples the time dimension by 4x.
     DOWNSAMPLING_FACTOR = 4
@@ -127,11 +129,12 @@ def ctc_rnn_collate_fn(batch):
     
     concat_transcripts = torch.cat(transcripts)
 
-    return batch_tensor, concat_transcripts, input_lengths, target_lengths
+    return batch_tensor, concat_transcripts, input_lengths, target_lengths, empty_batch
 
 
 # custom implementation for variable-length spects CNN Model w CTCLoss
 def ctc_collate_fn(batch):
+    empty_batch = False
     filtered_batch = [
         (spect, transcript, input_length, target_length)
         for spect, transcript, input_length, target_length in batch
@@ -141,7 +144,8 @@ def ctc_collate_fn(batch):
     if len(filtered_batch) == 0:
         # It's better to return None and handle it in the training loop, or just skip.
         print("WARNING: Skipping a batch because all samples were too long.")
-        return None, None, None, None
+        empty_batch = True
+        return None, None, None, None, empty_batch
 
     spects, transcripts, input_lengths_raw, target_lengths_raw = zip(*filtered_batch)
 
@@ -173,7 +177,7 @@ def ctc_collate_fn(batch):
     
     concat_transcripts = torch.cat(transcripts)
 
-    return batch_tensor, concat_transcripts, input_lengths, target_lengths
+    return batch_tensor, concat_transcripts, input_lengths, target_lengths, empty_batch
 
 
 def cel_collate_fn(batch):

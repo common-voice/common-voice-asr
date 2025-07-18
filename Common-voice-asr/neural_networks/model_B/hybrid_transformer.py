@@ -26,13 +26,14 @@ class HybridTransformer(nn.Module):
         self.classifier = nn.Sequential(nn.Dropout(dropout), nn.Linear(lstm_hidden * 2, vocab_size))
 
     def forward(self, x):
-        print("Input to encoder: ", x.shape)
+        # print("Input to encoder: ", x.shape)
         if self.conv_layer:
             x = self.cnn(x)
-        print("Before inputting to linear: ", x.shape)
+        # print("Before inputting to linear: ", x.shape)
         x = self.input_proj(x)
         x = self.pos_encoder(x)
         x = self.transformer(x)
         x, _ = self.lstm(x)
         x = self.classifier(x)
-        return F.log_softmax(x, dim=-1)
+        # return F.log_softmax(x, dim=-1)
+        return x

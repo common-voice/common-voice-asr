@@ -43,10 +43,13 @@ def sweep_train_modelA():
                                   f"lr{config.learning_rate}_bs{config.batch_size}_hd{config.hidden_dimension}_model{config.model_type}")
             wandb.config.update({"logdir": logdir})
             Path(logdir).mkdir(parents=True, exist_ok=True)
-            check_data = False
-            train(check_data, config.full_mini, config.corpus, config.greedy, config.model_type, config.epochs, config.learning_rate, 
-                  logdir, config.batch_size, config.hidden_dimension, lm_weight=config.lm_weight, word_score=config.word_score,
-                  sample_size=config.sample_size, sample_spect_folder=config.sample_spect_folder)
+            args = argparse.Namespace(check_data=False, full_mini=config.full_mini, corpus=config.corpus, greedy=config.greedy,
+                                      model_type=config.model_type, epochs=config.epochs, lr=config.learning_rate,
+                                      logdir=logdir, batch_size=config.batch_size, hidden_dim=config.hidden_dimension,
+                                      lm_weight=config.lm_weight, word_score=config.word_score, sample_size=config.sample_size,
+                                      sample_spect_folder=config.sample_spect_folder, test_sweep=False, d_model=512, nhead=8,
+                                      dim_feedforward=2048, nlayers=6, lstm_hidden=256, lstm_layers=1, dropout=0.5, debug_sample=False)
+            train(args)
     except Exception as e:
         print(f"[ERROR] Run failed with error: {e}")
         wandb.finish(exit_code=1)
@@ -74,7 +77,7 @@ def main(model: str = 'a', sample_spects: bool = False):
     if sample_spects:
         sweep_id = wandb.sweep(sweep_config_path_spects, project="week8_sweep_mels")
         function = sweep_train_modelA
-        wandb.agent(sweep_id, function, count=5)
+        wandb.agent(sweep_id, function, count=24)
     else:
         if model == 'a':
             sweep_id = wandb.sweep(sweep_config_path_a, project="week8_sweep_a")

@@ -17,7 +17,7 @@ import random
 import torch.amp
 from dotenv import load_dotenv
 from rich.progress import Progress
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import random_split, DataLoader, Subset
 from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
 
@@ -34,6 +34,9 @@ BASE_DIR = Path(os.getenv("BASE_DIR", Path.cwd()))
 
 tokens = ['<blank>', '|'] + list(string.ascii_uppercase) + [' ', "'", '-']
 N_MELS = 80
+# for memory errors
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+torch.cuda.empty_cache()
 
 
 def parse_command_args():
@@ -51,7 +54,7 @@ def parse_command_args():
     parser.add_argument('--test-sweep', action='store_true', help="Testing sweep with small dataset")
     parser.add_argument('--lm-weight', type=float, default=3.23, help="Learning model weight for beam search decoder")
     parser.add_argument('--word-score', type=float, default=-0.26, help="Word score for beam search decoder")
-    parser.add_argument('--sample_size', type=int, default=0, help="Specifying sample size from the dataset")
+    parser.add_argument('--sample_size', type=int, default=0, help="Specifying sample size from the dataset, specifically with corpus")
     parser.add_argument('--d_model', type=int, default=512, help="Number of expected features in the encoder/decoder inputs")
     parser.add_argument('--nhead', type=int, default=8, help="Number of heads in the multiheadattention models")
     parser.add_argument('--dim_feedforward', type=int, default=2048, help="Dimension of the feedforward network model")
@@ -60,7 +63,7 @@ def parse_command_args():
     parser.add_argument('--lstm_layers', type=int, default=1, help="Number of lstm layers in model")
     parser.add_argument('--dropout', type=float, default=0.5, help="Dropout value for transformer model")
     parser.add_argument('--sample_spect_folder', type=str, default=None, help='Train & validate with a mel-spectogram sweep')
-    parser.add_argument('--debug_sample', action='store_true', help="Deugging with single training loop on one sample")
+    parser.add_argument('--debug_sample', action='store_true', default=False, help="Deugging with single training loop on one sample")
     return parser.parse_args()
 
 
@@ -104,16 +107,19 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
     total_wer = 0.0
     
     # Use torch.cuda.amp.GradScaler for mixed-precision training
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler('cuda')
+    torch.autograd.set_detect_anomaly(True)
 
     with Progress() as progress:
         pbar = progress.add_task(f"[green]Training Epoch {epoch}...", total=len(train_loader))
-        for batch_idx, (spects, targets, input_lengths, target_lengths) in enumerate(train_loader):
+        for batch_idx, (spects, targets, input_lengths, target_lengths, empty_batch) in enumerate(train_loader):
+            if empty_batch:
+                continue
             spects, targets = spects.to(device), targets.to(device)
             input_lengths, target_lengths = input_lengths.to(device), target_lengths.to(device)
             
             optimizer.zero_grad()
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast('cuda'):
                 outputs = model(spects) # Expected output shape: (Batch, Time, Classes)
                 
                 # --- FIX 2: ADD A GENTLE BIAS TO THE BLANK TOKEN ---
@@ -126,6 +132,9 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
                 
                 # Permute for CTCLoss: (Time, Batch, Classes)
                 log_probs_for_loss = log_probs.permute(1, 0, 2)
+                
+                T_max = log_probs_for_loss.size(0)
+                input_lengths = input_lengths.clamp(max=T_max)
                 
                 loss = criterion(log_probs_for_loss, targets, input_lengths, target_lengths)
 
@@ -144,7 +153,7 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
             losses.append(loss.item())
             
             # Decode for WER calculation
-            hypotheses = decoder(outputs) # Decoder expects (Batch, Time, Classes)
+            hypotheses = decoder(outputs.float()) # Decoder expects (Batch, Time, Classes)
             references = get_references(target_lengths, targets)
             total_wer, count = get_train_wer(references, hypotheses, count, total_wer, batch_idx)
             
@@ -164,7 +173,9 @@ def ctc_validate(model, val_loader, criterion, device, decoder, epoch):
     with Progress() as progress:
         pbar = progress.add_task(f"[cyan]Validating Epoch {epoch}...", total=len(val_loader))
         with torch.no_grad():
-            for batch_idx, (spects, targets, input_lengths, target_lengths) in enumerate(val_loader):
+            for batch_idx, (spects, targets, input_lengths, target_lengths, empty_batch) in enumerate(val_loader):
+                if empty_batch:
+                    continue
                 spects, targets = spects.to(device), targets.to(device)
                 input_lengths, target_lengths = input_lengths.to(device), target_lengths.to(device)
 
@@ -175,7 +186,7 @@ def ctc_validate(model, val_loader, criterion, device, decoder, epoch):
                 loss = criterion(log_probs_for_loss, targets, input_lengths, target_lengths)
                 losses.append(loss.item())
                 
-                hypotheses = decoder(outputs)
+                hypotheses = decoder(outputs.float())
                 references = get_references(target_lengths, targets)
                 total_wer, total_cer, count = get_val_err(references, hypotheses, count, total_wer, total_cer, batch_idx)
 
@@ -219,12 +230,26 @@ def main(args):
         train_set = torch.utils.data.Subset(train_set, [0])
         val_set = torch.utils.data.Subset(val_set, [0])
 
+
     # For non-corpus cases that need splitting
     if not (args.corpus or args.debug_sample):
         total_len = len(dataset)
         train_len = int(0.8 * total_len)
         val_len = total_len - train_len
         train_set, val_set = random_split(dataset, [train_len, val_len])
+
+    # For sample size splitting
+    if args.corpus and not args.sample_size == 0:
+        total_len = args.sample_size
+        train_len = int(0.8 * total_len)
+        val_len = total_len - train_len
+        if train_len > len(train_set) or val_len > len(val_set):
+            raise ValueError(f"Sample sizes too large: train ({train_len}/{len(train_set)}), val ({val_len}/{len(val_set)})")
+        train_indices = random.sample(range(len(train_set)), train_len)
+        val_indices = random.sample(range(len(val_set)), val_len)
+        train_set = Subset(train_set, train_indices)
+        val_set = Subset(val_set, val_indices)
+
 
     # --- Simplified Model Creation Logic ---
     num_classes = len(tokens)
@@ -250,7 +275,7 @@ def main(args):
     
     train_loader = DataLoader(train_set, batch_size=args.batch_size, collate_fn=collate_fn, shuffle=True, num_workers=4, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=4, pin_memory=True)
-
+    
     # --- Training Loop ---
     criterion = nn.CTCLoss(blank=0, zero_infinity=True)
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
