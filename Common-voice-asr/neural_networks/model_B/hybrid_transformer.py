@@ -35,5 +35,6 @@ class HybridTransformer(nn.Module):
         x = self.transformer(x)
         x, _ = self.lstm(x)
         x = self.classifier(x)
-        # return F.log_softmax(x, dim=-1)
+        # x = F.log_softmax(x, dim=-1)
+        # return F.log_softmax(x, dim=-1) CHANGE - Error detected in LogSoftmaxBackward0
         return x

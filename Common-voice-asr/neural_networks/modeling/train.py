@@ -107,8 +107,8 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
     total_wer = 0.0
     
     # Use torch.cuda.amp.GradScaler for mixed-precision training
-    scaler = torch.amp.GradScaler('cuda')
-    torch.autograd.set_detect_anomaly(True)
+    scaler = torch.amp.GradScaler('cuda')  # Changed - torch.cuda.amp deprecated warning
+    torch.autograd.set_detect_anomaly(True) # for running out of GPU memory issues - recommended to help with that
 
     with Progress() as progress:
         pbar = progress.add_task(f"[green]Training Epoch {epoch}...", total=len(train_loader))
@@ -133,8 +133,8 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
                 # Permute for CTCLoss: (Time, Batch, Classes)
                 log_probs_for_loss = log_probs.permute(1, 0, 2)
                 
-                T_max = log_probs_for_loss.size(0)
-                input_lengths = input_lengths.clamp(max=T_max)
+                # T_max = log_probs_for_loss.size(0)
+                # input_lengths = input_lengths.clamp(max=T_max)
                 
                 loss = criterion(log_probs_for_loss, targets, input_lengths, target_lengths)
 
@@ -238,7 +238,7 @@ def main(args):
         val_len = total_len - train_len
         train_set, val_set = random_split(dataset, [train_len, val_len])
 
-    # For sample size splitting
+    # Change: Sample size splitting 
     if args.corpus and not args.sample_size == 0:
         total_len = args.sample_size
         train_len = int(0.8 * total_len)

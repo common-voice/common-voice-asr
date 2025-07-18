@@ -112,7 +112,7 @@ def transformer_collate_fn(batch):
 
 def ctc_rnn_collate_fn(batch):
     spects, transcripts, input_lengths_raw, target_lengths_raw = zip(*batch)
-    empty_batch = False
+    empty_batch = False 
     
     # The CTC_RNNEncoder uses a CNN frontend that downsamples the time dimension by 4x.
     DOWNSAMPLING_FACTOR = 4
@@ -144,7 +144,7 @@ def ctc_collate_fn(batch):
     if len(filtered_batch) == 0:
         # It's better to return None and handle it in the training loop, or just skip.
         print("WARNING: Skipping a batch because all samples were too long.")
-        empty_batch = True
+        empty_batch = True # added because of an error that you cannot do .to() on a NoneType obj
         return None, None, None, None, empty_batch
 
     spects, transcripts, input_lengths_raw, target_lengths_raw = zip(*filtered_batch)
