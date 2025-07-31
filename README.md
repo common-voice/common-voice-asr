@@ -93,7 +93,6 @@ Data & Preprocessing:
             python -m common-voice-asr.Common-voice-asr.preprocess --corpus
 
 Testing:
-* Run from common-voice-asr (if you are in Common-voice-asr step backward with "cd ..")
     
         pytest
 
