@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch
 from neural_networks.model_A.cnn_encoder import CTC_CNNEncoder
 
 class CTC_RNNEncoder(nn.Module):
@@ -32,6 +33,9 @@ class CTC_RNNEncoder(nn.Module):
         # Project to the LSTM's expected input dimension
         x = self.input_proj(x)
         # Shape is now (B, T_downsampled, projection_size), e.g., [1, 93, 256]
+        
+        if torch.isnan(x).any() or torch.isinf(x).any():
+            raise ValueError("NaNs/Infs before LSTM input")
 
         # Pass through the LSTM. The shape is already correct for batch_first=True.
         x, _ = self.lstm(x)

@@ -33,8 +33,9 @@ class HybridTransformer(nn.Module):
         x = self.input_proj(x)
         x = self.pos_encoder(x)
         x = self.transformer(x)
-        x, _ = self.lstm(x)
+        # print("Before inputting to lstm", x.shape)
+        x, _ = self.lstm(x) # accept (Batch, Time, Features)
         x = self.classifier(x)
-        # x = F.log_softmax(x, dim=-1)
         # return F.log_softmax(x, dim=-1) CHANGE - Error detected in LogSoftmaxBackward0
+        # print("Final model output: ", x.shape)
         return x

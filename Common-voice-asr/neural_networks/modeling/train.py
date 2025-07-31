@@ -15,6 +15,7 @@ import string
 import time
 import random
 import torch.amp
+import csv
 from dotenv import load_dotenv
 from rich.progress import Progress
 from torch.utils.data import random_split, DataLoader, Subset
@@ -22,7 +23,7 @@ from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
 
 from neural_networks.model_A.wrap_encoder import WrapEncoder
-from neural_networks.datasets import CEL_MiniCVDataset, cel_collate_fn, cel_rnn_collate_fn, CTC_MiniCVDataset, ctc_collate_fn, ctc_rnn_collate_fn, transformer_collate_fn
+from neural_networks.datasets import CEL_MiniCVDataset, cel_collate_fn, cel_rnn_collate_fn, CTC_MiniCVDataset, ctc_collate_fn, ctc_rnn_collate_fn, transformer_collate_fn, transformer_conv_collate
 from neural_networks.model_A.cnn_encoder import CTC_CNNEncoder, CEL_CNNEncoder
 from neural_networks.model_A.rnn_encoder import CTC_RNNEncoder, CEL_RNNEncoder
 from neural_networks.model_B.hybrid_transformer import HybridTransformer
@@ -30,7 +31,7 @@ from neural_networks.greedy_ctc_decoder import GreedyCTCDecoder
 from neural_networks.beam_search_decoder import beam_search_decoder
 
 load_dotenv()
-BASE_DIR = Path(os.getenv("BASE_DIR", Path.cwd()))
+BASE_DIR = Path(os.getenv("BASE_DIR", Path.cwd())) 
 
 tokens = ['<blank>', '|'] + list(string.ascii_uppercase) + [' ', "'", '-']
 N_MELS = 80
@@ -46,14 +47,14 @@ def parse_command_args():
     parser.add_argument('--corpus', action='store_true', help="Load corpus train & dev large datasets")
     parser.add_argument('--greedy', action='store_true', help="Use Greedy CTC Decoder")
     parser.add_argument('--model_type', choices=['cnn', 'rnn', 'transformer'], required=True, help='Specify which model to use')
-    parser.add_argument('--epochs', type=int, required=True, help="Number of epochs to train")
+    parser.add_argument('--epochs', type=int, default=5, help="Number of epochs to train")
     parser.add_argument('--lr', type=float, default=3e-4, help="Learning rate")
     parser.add_argument('--logdir', type=str, required=True, help="Folder to write trains to")
     parser.add_argument('--batch-size', type=int, default=4, help='Batch size for training')
     parser.add_argument('--hidden_dim', type=int, default=128, help='Hidden dimension for model')
     parser.add_argument('--test-sweep', action='store_true', help="Testing sweep with small dataset")
-    parser.add_argument('--lm-weight', type=float, default=3.23, help="Learning model weight for beam search decoder")
-    parser.add_argument('--word-score', type=float, default=-0.26, help="Word score for beam search decoder")
+    parser.add_argument('--lm_weight', type=float, default=3.23, help="Learning model weight for beam search decoder")
+    parser.add_argument('--word_score', type=float, default=-0.26, help="Word score for beam search decoder")
     parser.add_argument('--sample_size', type=int, default=0, help="Specifying sample size from the dataset, specifically with corpus")
     parser.add_argument('--d_model', type=int, default=512, help="Number of expected features in the encoder/decoder inputs")
     parser.add_argument('--nhead', type=int, default=8, help="Number of heads in the multiheadattention models")
@@ -64,6 +65,10 @@ def parse_command_args():
     parser.add_argument('--dropout', type=float, default=0.5, help="Dropout value for transformer model")
     parser.add_argument('--sample_spect_folder', type=str, default=None, help='Train & validate with a mel-spectogram sweep')
     parser.add_argument('--debug_sample', action='store_true', default=False, help="Deugging with single training loop on one sample")
+    parser.add_argument('--conv_layer', action='store_true', default=False, help="Add convolutional layer to Transformer")
+    parser.add_argument('--beam_width', type=int, default=32, help="Beam size for beam search decoder")
+    parser.add_argument('--best', action='store_true', help="Using the best mel spectograms generated - EDIT: ran into a lot of errors using these files so with time restraints decided to move on, do not use")
+    parser.add_argument('--demo', action='store_true', help='Run demo in Jupyter Notebook')
     return parser.parse_args()
 
 
@@ -100,11 +105,15 @@ def get_val_err(references, hypotheses, count, total_wer, total_cer, batch_idx):
     return total_wer, total_cer, count
 
         
-def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_interval, decoder):
+def ctc_train(model, train_loader, optimizer, criterion, device, epoch, decoder, sample_size, corpus):
     model.train()
     losses = []
     count = 0
     total_wer = 0.0
+    # enable_autocast = isinstance(model, HybridTransformer)
+    enable_autocast = False
+    
+    decode_interval = max(1, int(len(train_loader) * 0.20))
     
     # Use torch.cuda.amp.GradScaler for mixed-precision training
     scaler = torch.amp.GradScaler('cuda')  # Changed - torch.cuda.amp deprecated warning
@@ -113,13 +122,13 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
     with Progress() as progress:
         pbar = progress.add_task(f"[green]Training Epoch {epoch}...", total=len(train_loader))
         for batch_idx, (spects, targets, input_lengths, target_lengths, empty_batch) in enumerate(train_loader):
-            if empty_batch:
+            if empty_batch: 
                 continue
             spects, targets = spects.to(device), targets.to(device)
             input_lengths, target_lengths = input_lengths.to(device), target_lengths.to(device)
             
             optimizer.zero_grad()
-            with torch.amp.autocast('cuda'):
+            with torch.amp.autocast('cuda', enabled=enable_autocast): # Attempt to mitigate RuntimeError: Function 'CudnnRnnBackward0' returned nan values in its 0th output by adding enabled=False 
                 outputs = model(spects) # Expected output shape: (Batch, Time, Classes)
                 
                 # --- FIX 2: ADD A GENTLE BIAS TO THE BLANK TOKEN ---
@@ -128,13 +137,14 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
                 outputs[:, :, 0] += blank_bias
                 # --- END FIX 2 ---
 
+                outputs = outputs.float() #  avoiding float16 instability in the LSTM layer
                 log_probs = F.log_softmax(outputs, dim=2)
                 
                 # Permute for CTCLoss: (Time, Batch, Classes)
                 log_probs_for_loss = log_probs.permute(1, 0, 2)
                 
-                # T_max = log_probs_for_loss.size(0)
-                # input_lengths = input_lengths.clamp(max=T_max)
+                T_max = outputs.size(1)
+                input_lengths = input_lengths.clamp(max=T_max)
                 
                 loss = criterion(log_probs_for_loss, targets, input_lengths, target_lengths)
 
@@ -144,7 +154,7 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
             # --- FIX 1: RE-INTRODUCE GRADIENT CLIPPING ---
             # This is crucial for stabilizing RNN training
             scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # adjusting from 5.0 to 1.0 to see if it relieves error
             # --- END FIX 1 ---
 
             scaler.step(optimizer)
@@ -153,9 +163,18 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, log_inte
             losses.append(loss.item())
             
             # Decode for WER calculation
-            hypotheses = decoder(outputs.float()) # Decoder expects (Batch, Time, Classes)
-            references = get_references(target_lengths, targets)
-            total_wer, count = get_train_wer(references, hypotheses, count, total_wer, batch_idx)
+            # print("Input to decoder: ", outputs.shape)
+            # if sample_size == 0 and corpus:
+            if corpus:
+                if batch_idx % decode_interval == 0:
+                    print("input to decoder: ", outputs.shape)
+                    hypotheses = decoder(outputs)
+                    references = get_references(target_lengths, targets)
+                    total_wer, count = get_train_wer(references, hypotheses, count, total_wer, batch_idx)
+            else:
+                hypotheses = decoder(outputs) # Decoder expects (Batch, Time, Classes)
+                references = get_references(target_lengths, targets)
+                total_wer, count = get_train_wer(references, hypotheses, count, total_wer, batch_idx)
             
             progress.update(pbar, advance=1, description=f"[green]Training Epoch {epoch}... Loss: {loss.item():.4f}")
 
@@ -180,13 +199,14 @@ def ctc_validate(model, val_loader, criterion, device, decoder, epoch):
                 input_lengths, target_lengths = input_lengths.to(device), target_lengths.to(device)
 
                 outputs = model(spects)
+                outputs = outputs.float()
                 log_probs = F.log_softmax(outputs, dim=2)
                 log_probs_for_loss = log_probs.permute(1, 0, 2)
                 
                 loss = criterion(log_probs_for_loss, targets, input_lengths, target_lengths)
                 losses.append(loss.item())
                 
-                hypotheses = decoder(outputs.float())
+                hypotheses = decoder(outputs)
                 references = get_references(target_lengths, targets)
                 total_wer, total_cer, count = get_val_err(references, hypotheses, count, total_wer, total_cer, batch_idx)
 
@@ -196,6 +216,10 @@ def ctc_validate(model, val_loader, criterion, device, decoder, epoch):
     avg_wer = total_wer / count if count > 0 else 1.0
     avg_cer = total_cer / count if count > 0 else 1.0
     return avg_loss, avg_wer, avg_cer
+
+
+def tokens_to_str(tokens):
+    return " ".join(tokens) if isinstance(tokens, list) else str(tokens)
 
 
 def main(args):
@@ -209,20 +233,27 @@ def main(args):
         # This case seems to be for CTC, so setting use_cel to False
         manifest_path = os.path.join(BASE_DIR, "data/cleaned_manifest.csv")
         spect_dir = os.path.join(BASE_DIR, "data/processed/full_mini_cv")
-        df = pd.read_csv(manifest_path)
         dataset = CTC_MiniCVDataset(manifest_path, spect_dir)
     elif args.corpus or args.debug_sample:
+        if args.best:
+            print("Using best mel spectograms")
+            train_spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/best_train_cv")
+            dev_spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/best_dev_cv")
+        else:
+            train_spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/train_cv")
+            dev_spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/dev_cv")
         train_manifest_path = os.path.join(BASE_DIR, "corpus_data/cleaned_train.csv")
-        train_spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/train_cv")
         dev_manifest_path = os.path.join(BASE_DIR, "corpus_data/cleaned_dev.csv")
-        dev_spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/dev_cv")
         train_set = CTC_MiniCVDataset(train_manifest_path, train_spect_dir)
         val_set = CTC_MiniCVDataset(dev_manifest_path, dev_spect_dir)
+    elif args.demo:
+        manifest_path = os.path.join(BASE_DIR, 'corpus_data/demo_manifest.csv')
+        spect_dir = os.path.join(BASE_DIR, f"corpus_data/processed/demos")
+        dataset = CTC_MiniCVDataset(manifest_path, spect_dir)
     else: # Default case for CEL
         use_cel = True
         manifest_path = BASE_DIR / "data" / "manifest.csv"
         spect_dir = BASE_DIR / "data" / "processed" / "mini_cv"
-        df = pd.read_csv(manifest_path)
         dataset = CEL_MiniCVDataset(manifest_path, spect_dir)
     
     if args.debug_sample:
@@ -241,7 +272,7 @@ def main(args):
     # Change: Sample size splitting 
     if args.corpus and not args.sample_size == 0:
         total_len = args.sample_size
-        train_len = int(0.8 * total_len)
+        train_len = int(0.85 * total_len)
         val_len = total_len - train_len
         if train_len > len(train_set) or val_len > len(val_set):
             raise ValueError(f"Sample sizes too large: train ({train_len}/{len(train_set)}), val ({val_len}/{len(val_set)})")
@@ -259,14 +290,18 @@ def main(args):
     elif args.model_type == 'cnn':
         # CNN model requires wrapping
         base_model = CTC_CNNEncoder(hidden_dim=args.hidden_dim)
-        model = WrapEncoder(base_model, num_classes, apply=False)
+        model = WrapEncoder(base_model, num_classes, apply=False, dropout=args.dropout)
         collate_fn = ctc_collate_fn
     elif args.model_type == 'transformer':
         # Assuming transformer is self-contained like the new RNN model
         model = HybridTransformer(input_dim=N_MELS, vocab_size=num_classes, d_model=args.d_model, nhead=args.nhead, 
                                   dim_feedforward=args.dim_feedforward, nlayers=args.nlayers, lstm_hidden=args.lstm_hidden, 
-                                  lstm_layers=args.lstm_layers, dropout=args.dropout)
-        collate_fn = transformer_collate_fn
+                                  lstm_layers=args.lstm_layers, dropout=args.dropout, conv_layer=args.conv_layer)
+        # Allowing for conformer model adjustment
+        if args.conv_layer:
+            collate_fn = transformer_conv_collate
+        else:
+            collate_fn = transformer_collate_fn
     else:
         raise ValueError(f"Unknown model type: {args.model_type}")
 
@@ -284,10 +319,11 @@ def main(args):
         decoder = GreedyCTCDecoder(tokens)
     else:
         # Assuming beam search decoder is the alternative
-        decoder = beam_search_decoder(tokens, lm_weight=args.lm_weight, word_score=args.word_score)
+        decoder = beam_search_decoder(tokens, lm_weight=args.lm_weight, word_score=args.word_score, beam_size=args.beam_width)
 
     for epoch in range(1, args.epochs + 1):
-        train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, 20, decoder)
+        train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, decoder, 
+                                                                  args.sample_size, args.corpus)
         val_loss, val_wer, val_cer = ctc_validate(model, val_loader, criterion, device, decoder, epoch)
         
         print(f"\n--- Epoch {epoch} Summary ---")
@@ -300,6 +336,16 @@ def main(args):
         writer.add_scalar('Loss/val', val_loss, epoch)
         writer.add_scalar('WER/val', val_wer, epoch)
         writer.add_scalar('CER/val', val_cer, epoch)
+        
+        if wandb.run:
+            wandb.log({
+                'epoch': epoch,
+                'train/ctc_loss': train_loss,
+                'train/wer': train_wer,
+                'val/ctc_loss': val_loss,
+                'val/wer': val_wer,
+                'val/cer': val_cer,
+                })
 
     writer.close()
 

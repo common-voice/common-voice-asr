@@ -19,12 +19,18 @@ param_combos = list(product(sample_rate, n_fft, hop_length, n_mels))
 train_sample = 1275
 dev_sample = 225
 
+best_sr = 22050
+best_nfft = 2048
+best_hop = 256
+best_nmels = 80
+
 
 def parse_command_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--full_mini', action='store_true', help='Load full mini dataset')
-    parser.add_argument('--corpus', action='store_true', help='Preprocess corpus dataset, split into train & dev')
-    parser.add_argument('--sample', action='store_true', help='Generate samples of mel spectograms based on varying parameters')
+    parser.add_argument('--full_mini', action='store_true', default=False, help='Load full mini dataset')
+    parser.add_argument('--corpus', action='store_true', default=False, help='Preprocess corpus dataset, split into train & dev')
+    parser.add_argument('--sample', action='store_true', default=False, help='Generate samples of mel spectograms based on varying parameters')
+    parser.add_argument('--best', action='store_true', default=False, help="Generate best mel spectograms per sweep data, paired with corpus for full")
     return parser.parse_args()
 
 
@@ -61,22 +67,26 @@ def get_sample(raw_audio_dir, sample_type):
     return random.sample(files, min(len(files), sample_size))
                 
 
-def main(full_mini: bool = False, corpus: bool = False, sample: bool = False):
-    if corpus:
+def main(args):
+    if args.corpus:
         for split in ['dev', 'train']:
             raw_audio_dir = os.path.join(BASE_DIR, f"corpus_data/raw/{split}_cv")
-            output_dir = os.path.join(BASE_DIR, f"corpus_data/processed/{split}_cv")
-            preprocess(raw_audio_dir, output_dir)
-    elif sample:
+            if args.best:
+                output_dir = os.path.join(BASE_DIR, f"corpus_data/processed/best_{split}_cv")
+                preprocess(raw_audio_dir, output_dir, best_sr, best_nfft, best_hop, best_nmels)
+            else:
+                output_dir = os.path.join(BASE_DIR, f"corpus_data/processed/{split}_cv")
+                preprocess(raw_audio_dir, output_dir)
+    elif args.sample:
         for split in ['dev', 'train']:
             raw_audio_dir = os.path.join(BASE_DIR, f"corpus_data/raw/{split}_cv")
             sample_files = get_sample(raw_audio_dir, split)
             for sr, n_fft, hop, n_mels in param_combos:
                 output_dir = os.path.join(BASE_DIR,
                                           f"corpus_data/processed/{split}_cv/sample/sr{sr}_nfft{n_fft}_hop{hop}_nmels{n_mels}")
-                preprocess(raw_audio_dir, output_dir, sr, n_fft, hop, n_mels, subset=sample_files)       
+                preprocess(raw_audio_dir, output_dir, sr, n_fft, hop, n_mels, subset=sample_files)   
     else:
-        if full_mini:
+        if args.full_mini:
             raw_audio_dir = os.path.join(BASE_DIR, "data/raw/full_mini_cv")
             output_dir = os.path.join(BASE_DIR, "data/processed/full_mini_cv")
         else:
@@ -88,4 +98,4 @@ def main(full_mini: bool = False, corpus: bool = False, sample: bool = False):
 # python -m common-voice-asr.Common-voice-asr.preprocess --corpus 
 if __name__ == "__main__":
     args = parse_command_args()
-    main(full_mini=args.full_mini, corpus=args.corpus, sample=args.sample)
+    main(args)

@@ -4,13 +4,15 @@ import numpy as np
 import torch
 from dotenv import load_dotenv
 from pathlib import Path
-from neural_networks.cnn_encoder import CEL_CNNEncoder
-from neural_networks.wrap_encoder import WrapEncoder
+from neural_networks.model_A.cnn_encoder import CEL_CNNEncoder
+from neural_networks.model_A.wrap_encoder import WrapEncoder
 
 load_dotenv()
 
-BASE_DIR = Path(os.getenv("BASE_DIR"))
-PROCESSED_DIR = BASE_DIR / "data" / "processed" / "mini_cv"
+BASE_DIR = Path(os.getenv("BASE_DIR", Path.cwd()))
+if BASE_DIR.name != "Common-voice-asr":
+    BASE_DIR = BASE_DIR / "Common-voice-asr"
+PROCESSED_DIR = BASE_DIR / "corpus_data" / "processed" / "train_cv"
 NUM_TEST_FILES = 5
 
 

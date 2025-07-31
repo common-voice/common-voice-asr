@@ -20,9 +20,9 @@ ENT_LEXICON_PATH = BASE_DIR / "corpus_data" / "lexicon.txt"
 ENT_LM_PATH = BASE_DIR / "corpus_data" / "lm.bin"
 
 
-def beam_search_decoder(tokens, lm_weight, word_score):
+def beam_search_decoder(tokens, lm_weight, word_score, beam_size):
     decoder = ctc_decoder(str(ENT_LEXICON_PATH), tokens, str(ENT_LM_PATH),
-                          nbest=3, beam_size=200, lm_weight=lm_weight, word_score=word_score)
+                          nbest=3, beam_size=beam_size, lm_weight=lm_weight, word_score=word_score)
 
     def decode_batch(log_probs_batch):
         decoded = decoder(log_probs_batch.cpu())

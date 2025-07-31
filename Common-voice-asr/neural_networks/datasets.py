@@ -20,6 +20,7 @@ class CTC_MiniCVDataset(Dataset):
         row = self.manifest.iloc[idx]
         spect_filename = row['filename'].replace('.mp3', '.npy')
         spect_path = os.path.join(self.spect_dir, spect_filename)
+        # print(f"Loading: {spect_path}")
         spect = np.load(spect_path)
         # print(f"[DEBUG] {spect_filename}: {spect.shape}")
 
@@ -109,6 +110,25 @@ def transformer_collate_fn(batch):
     
     return batch_tensor, concat_transcripts, input_lengths, target_lengths, empty_batch
 
+
+def transformer_conv_collate(batch):
+    spects, transcripts, input_lengths_raw, target_lengths_raw = zip(*batch)
+    empty_batch = False
+    DOWNSAMPLING_FACTOR = 4
+    
+    input_lengths = torch.tensor([l // DOWNSAMPLING_FACTOR for l in input_lengths_raw], dtype=torch.long)
+    target_lengths = torch.tensor(target_lengths_raw, dtype=torch.long)
+    
+    padded_spects = alt_padding(spects)
+    
+    batch_tensor = torch.stack(padded_spects)
+    # permute to [B, 1, F, T] for Conv2D
+    batch_tensor = batch_tensor.permute(0, 2, 1).unsqueeze(1)
+    # print(f"Batch tensor post permute unsqueeze: ", batch_tensor.shape)
+    concat_transcripts = torch.cat(transcripts)
+
+    return batch_tensor, concat_transcripts, input_lengths, target_lengths, empty_batch
+    
 
 def ctc_rnn_collate_fn(batch):
     spects, transcripts, input_lengths_raw, target_lengths_raw = zip(*batch)

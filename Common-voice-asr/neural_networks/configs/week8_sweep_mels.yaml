@@ -20,7 +20,7 @@ parameters:
   corpus: 
     values: [True]
   greedy: 
-    values: [False]
+    values: [True]
   lm_weight:
     values: [3.23]
   word_score: 

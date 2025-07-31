@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from preprocess import preprocess
 
-# python -m fetch_data.py --corpus
+# python -m fetch_data --corpus
 # from base: python -m common-voice-asr.Common-voice-asr.fetch_data --corpus 
 
 load_dotenv()
@@ -145,6 +145,8 @@ def fetch_corpus(manifest_path, transcripts_file, output_dir):
             else:
                 print(f"Warning: {filename} not found")
 
+# Debugging for files missing from the spectograms. Ultimately handled in preprocessing, but were useful in figuring out the issue of their absence. 
+
 def regen_csv(tsv_path, durations_path, output_csv):
     transcripts = pd.read_csv(tsv_path, sep='\t', usecols=["path", "sentence"], quoting=3)
     durations = pd.read_csv(durations_path, sep='\t', usecols=["clip", "duration[ms]"], quoting=3)
@@ -202,7 +204,6 @@ def if_exist_process(missing_files, raw_dir, spect_dir):
                     
 
 def main(full_mini: bool = False, corpus: bool = False):
-    """
     if full_mini:
         fetch_full_mini()
     elif corpus:
@@ -210,15 +211,6 @@ def main(full_mini: bool = False, corpus: bool = False):
         fetch_corpus(MANIFEST_DEV_PATH, TRANSCRIPTS_FILE_DEV, OUTPUT_DIR_DEV)
     else:
         fetch_mini()
-    """
-    # regen_csv(TRANSCRIPTS_FILE_DEV, DURATIONS_FILE, MANIFEST_DEV_PATH)
-    fetch_absent_files(TRANSCRIPTS_FILE_TRAIN, OUTPUT_DIR_TRAIN)
-    fetch_absent_files(TRANSCRIPTS_FILE_DEV, OUTPUT_DIR_DEV)
-    train_missing = find_missing_npy(MANIFEST_TRAIN_PATH, SPECT_TRAIN_PATH)
-    dev_missing = find_missing_npy(MANIFEST_DEV_PATH, SPECT_DEV_PATH)
-    if_exist_process(train_missing, OUTPUT_DIR_TRAIN, SPECT_TRAIN_PATH)
-    if_exist_process(dev_missing, OUTPUT_DIR_DEV, SPECT_DEV_PATH)
-
 
 if __name__ == "__main__":
     args = parse_command_args()

@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 BASE_DIR = Path(os.getenv("BASE_DIR", Path.cwd()))
-logdir_path_a = os.path.join(BASE_DIR, "neural_networks/runs/week8_sweep_a")
-logdir_path_b = os.path.join(BASE_DIR, "neural_networks/runs/week8_sweep_b")
+logdir_path_a = os.path.join(BASE_DIR, "neural_networks/runs/sweep_a")
+logdir_path_b = os.path.join(BASE_DIR, "neural_networks/runs/sweep_b")
 
 config_path_a = os.path.join(BASE_DIR, "neural_networks/configs/week8_sweep_a.yaml")
 with open(config_path_a) as f:
@@ -31,24 +31,25 @@ with open(config_path_spects) as f:
 def parse_command_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', choices=['a', 'b'], required=True, help='Specify which model to sweep. a: RNN & CNN or b: Hybrid Transformer')
-    parser.add_argument('--sample_spects', action='store_true', help='Train & validate with a mel-spectogram sweep')
+    parser.add_argument('--sample_spects', action='store_true', default=False, help='Train & validate with a mel-spectogram sweep')
+    parser.add_argument('--config', type=str, required=True, help="Specify config file to run with")
+    parser.add_argument('--project_name', type=str, required=True, help="Specify project name")
+    parser.add_argument('--count', type=int, default=25, help="Number of runs within a single sweep")
     return parser.parse_args()
+
 
 def sweep_train_modelA():
     try:
         with wandb.init():
-            config = wandb.config
+            config = dict(wandb.config)
             run_id = wandb.run.id
             logdir = os.path.join(logdir_path_a,
-                                  f"lr{config.learning_rate}_bs{config.batch_size}_hd{config.hidden_dimension}_model{config.model_type}")
+                                  f"lr{config['learning_rate']}_bs{config['batch_size']}_hd{config['hidden_dimension']}_model{config['model_type']}")
+            config['logdir'] = logdir
             wandb.config.update({"logdir": logdir})
             Path(logdir).mkdir(parents=True, exist_ok=True)
-            args = argparse.Namespace(check_data=False, full_mini=config.full_mini, corpus=config.corpus, greedy=config.greedy,
-                                      model_type=config.model_type, epochs=config.epochs, lr=config.learning_rate,
-                                      logdir=logdir, batch_size=config.batch_size, hidden_dim=config.hidden_dimension,
-                                      lm_weight=config.lm_weight, word_score=config.word_score, sample_size=config.sample_size,
-                                      sample_spect_folder=config.sample_spect_folder, test_sweep=False, d_model=512, nhead=8,
-                                      dim_feedforward=2048, nlayers=6, lstm_hidden=256, lstm_layers=1, dropout=0.5, debug_sample=False)
+            
+            args = load_args(config, str(BASE_DIR / "neural_networks/configs/train_defaults.yaml")) 
             train(args)
     except Exception as e:
         print(f"[ERROR] Run failed with error: {e}")
@@ -62,34 +63,52 @@ def sweep_train_modelB():
             run_id = wandb.run.id
             logdir = os.path.join(logdir_path_b,
                                   f"lr{config.learning_rate}_bs{config.batch_size}_hd{config.hidden_dimension}_model{config.model_type}")
+            config['logdir'] = logdir
             wandb.config.update({"logdir": logdir})
             Path(logdir).mkdir(parents=True, exist_ok=True)
             check_data = False
-            train(check_data, config.full_mini, config.corpus, config.greedy, config.model_type, config.epochs, config.learning_rate, 
-                  logdir, config.batch_size, config.hidden_dimension, lm_weight=config.lm_weight, word_score=config.word_score,
-                  sample_size=config.sample_size)
+            args = load_args(config, str(BASE_DIR / "neural_networks/configs/train_defaults.yaml")) 
+            train(args)
     except Exception as e:
         print(f"[ERROR] Run failed with error: {e}")
         wandb.finish(exit_code=1)
 
 
-def main(model: str = 'a', sample_spects: bool = False):
-    if sample_spects:
-        sweep_id = wandb.sweep(sweep_config_path_spects, project="week8_sweep_mels")
-        function = sweep_train_modelA
-        wandb.agent(sweep_id, function, count=24)
+def load_args(sweep_config, defaults_path) -> argparse.Namespace:
+    with open(defaults_path) as f:
+        defaults = yaml.safe_load(f)
+    merged = {**defaults, **sweep_config}
+    return argparse.Namespace(**merged)
+
+
+def load_path(config_path):
+    config_path = BASE_DIR / "neural_networks/configs" / config_path
+    if not config_path.exists():
+        print(f"[ERROR] Config path for your sweep, {config_path}, does not exist")
+        exit(1)
+    with open(config_path) as f:
+        return yaml.safe_load(f)
+
+
+def main(args):
+
+    if args.sample_spects:
+        config_dict = config_path_spects
     else:
-        if model == 'a':
-            sweep_id = wandb.sweep(sweep_config_path_a, project="week8_sweep_a")
-            wandb.agent(sweep_id, sweep_train_modelA, count=24)
-        elif model == 'b':
-            sweep_id = wandb.sweep(sweep_config_path_b, project="week8_sweep_b")
-            wandb.agent(sweep_id, sweep_train_modelB, count=100)
-        else:
-            print("Model can only be a or b")
-            return
+        config_dict = load_path(args.config)
+
+    if args.model == 'a':
+        sweep_model = sweep_train_modelA
+    elif args.model == 'b':
+        sweep_model = sweep_train_modelB
+    else:
+        print("[ERROR] Model can only be a or b")
+        return
+
+    sweep_id = wandb.sweep(config_dict, project=args.project_name)
+    wandb.agent(sweep_id, sweep_model, count=args.count)
 
 
 if __name__ == "__main__":
     args = parse_command_args()
-    main(args.model, args.sample_spects)
+    main(args)

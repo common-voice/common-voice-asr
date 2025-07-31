@@ -8,7 +8,9 @@ from mockito import when, verify, unstub
 from neural_networks.modeling.train import main as train
 
 load_dotenv()
-BASE_DIR = Path(os.getenv("BASE_DIR"))
+BASE_DIR = Path(os.getenv("BASE_DIR", Path.cwd()))
+if BASE_DIR.name != "Common-voice-asr":
+    BASE_DIR = BASE_DIR / "Common-voice-asr"
 
 
 def test_load_sweep():
