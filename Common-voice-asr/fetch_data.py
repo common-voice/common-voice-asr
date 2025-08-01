@@ -1,5 +1,6 @@
 import os
 import shutil
+import numpy as np
 import pandas as pd
 import librosa
 import csv
@@ -193,9 +194,9 @@ def if_exist_process(missing_files, raw_dir, spect_dir):
             if os.path.exists(output_path):
                 continue
             try:
-                y, sr = librosa.load(input_path, sr=SAMPLE_RATE)
-                mel_spec = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=N_FFT, hop_length=HOP_LENGTH, 
-                                                          n_mels=N_MELS, power=2.0)
+                y, sr = librosa.load(input_path, sr=22050)
+                mel_spec = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=2048, hop_length=512, 
+                                                          n_mels=80, power=2.0)
                 log_mel_spec = librosa.power_to_db(mel_spec, ref=1.0, top_db=80)
                 np.save(output_path, log_mel_spec)
                 print(f"Saved: {output_path}")
