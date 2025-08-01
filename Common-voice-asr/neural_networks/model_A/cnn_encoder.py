@@ -1,5 +1,4 @@
 import torch.nn as nn
-import torch
 
 
 class CTC_CNNEncoder(nn.Module):
@@ -8,8 +7,6 @@ class CTC_CNNEncoder(nn.Module):
         self.layer = layer
         self.conv_block1 = nn.Sequential(
             nn.Conv2d(in_channels, hidden_dim, kernel_size=3, padding=1),
-            # nn.BatchNorm2d(hidden_dim), RuntimeError: Function 'ConvolutionBackward0' returned nan values in its 1th output
-            # nn.InstanceNorm2d(hidden_dim, affine=True),
             nn.GroupNorm(num_groups=1, num_channels=hidden_dim),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2)
@@ -17,16 +14,12 @@ class CTC_CNNEncoder(nn.Module):
 
         self.conv_block2 = nn.Sequential(
             nn.Conv2d(hidden_dim, hidden_dim * 2, kernel_size=3, padding=1),
-            # nn.BatchNorm2d(hidden_dim * 2), 
-            # nn.InstanceNorm2d(hidden_dim * 2, affine=True),
             nn.GroupNorm(num_groups=1, num_channels=(hidden_dim*2)),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2)
         )
         self.conv_block3 = nn.Sequential(
             nn.Conv2d(hidden_dim * 2, hidden_dim, kernel_size=1),
-            # nn.BatchNorm2d(hidden_dim),
-            # nn.InstanceNorm2d(hidden_dim, affine=True),
             nn.GroupNorm(num_groups=1, num_channels=hidden_dim),
             nn.ReLU()
         )

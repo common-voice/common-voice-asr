@@ -3,19 +3,14 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import pandas as pd
 import torch.nn.functional as F
 import os
 import torchaudio
 import wandb
-import tempfile
-import shutil
 import argparse
 import string
-import time
 import random
 import torch.amp
-import csv
 from dotenv import load_dotenv
 from rich.progress import Progress
 from torch.utils.data import random_split, DataLoader, Subset
@@ -23,7 +18,9 @@ from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
 
 from neural_networks.model_A.wrap_encoder import WrapEncoder
-from neural_networks.datasets import CEL_MiniCVDataset, cel_collate_fn, cel_rnn_collate_fn, CTC_MiniCVDataset, ctc_collate_fn, ctc_rnn_collate_fn, transformer_collate_fn, transformer_conv_collate
+from neural_networks.datasets import CEL_MiniCVDataset, cel_collate_fn, cel_rnn_collate_fn
+from neural_networks.datasets import CTC_MiniCVDataset, ctc_collate_fn, ctc_rnn_collate_fn
+from neural_networks.datasets import transformer_collate_fn, transformer_conv_collate
 from neural_networks.model_A.cnn_encoder import CTC_CNNEncoder, CEL_CNNEncoder
 from neural_networks.model_A.rnn_encoder import CTC_RNNEncoder, CEL_RNNEncoder
 from neural_networks.model_B.hybrid_transformer import HybridTransformer
@@ -31,7 +28,7 @@ from neural_networks.greedy_ctc_decoder import GreedyCTCDecoder
 from neural_networks.beam_search_decoder import beam_search_decoder
 
 load_dotenv()
-BASE_DIR = Path(os.getenv("BASE_DIR", Path.cwd())) 
+BASE_DIR = Path(os.getenv("BASE_DIR", Path.cwd()))
 
 tokens = ['<blank>', '|'] + list(string.ascii_uppercase) + [' ', "'", '-']
 N_MELS = 80
@@ -46,7 +43,8 @@ def parse_command_args():
     parser.add_argument('--full_mini', action='store_true', help="Load larger data split from CV Train")
     parser.add_argument('--corpus', action='store_true', help="Load corpus train & dev large datasets")
     parser.add_argument('--greedy', action='store_true', help="Use Greedy CTC Decoder")
-    parser.add_argument('--model_type', choices=['cnn', 'rnn', 'transformer'], required=True, help='Specify which model to use')
+    parser.add_argument('--model_type', choices=['cnn', 'rnn', 'transformer'], required=True,
+                        help='Specify which model to use')
     parser.add_argument('--epochs', type=int, default=5, help="Number of epochs to train")
     parser.add_argument('--lr', type=float, default=3e-4, help="Learning rate")
     parser.add_argument('--logdir', type=str, required=True, help="Folder to write trains to")
@@ -55,19 +53,23 @@ def parse_command_args():
     parser.add_argument('--test-sweep', action='store_true', help="Testing sweep with small dataset")
     parser.add_argument('--lm_weight', type=float, default=3.23, help="Learning model weight for beam search decoder")
     parser.add_argument('--word_score', type=float, default=-0.26, help="Word score for beam search decoder")
-    parser.add_argument('--sample_size', type=int, default=0, help="Specifying sample size from the dataset, specifically with corpus")
+    parser.add_argument('--sample_size', type=int, default=0,
+                        help="Specifying sample size from the dataset, specifically with corpus")
     parser.add_argument('--d_model', type=int, default=512, help="Number of expected features in the encoder/decoder inputs")
     parser.add_argument('--nhead', type=int, default=8, help="Number of heads in the multiheadattention models")
     parser.add_argument('--dim_feedforward', type=int, default=2048, help="Dimension of the feedforward network model")
     parser.add_argument('--nlayers', type=int, default=6, help="Number of layers in the decoder")
-    parser.add_argument('--lstm_hidden', type=int, default=256, help="Number of hidden dimensions for LSTM layer of transformer model")
+    parser.add_argument('--lstm_hidden', type=int, default=256,
+                        help="Number of hidden dimensions for LSTM layer of transformer model")
     parser.add_argument('--lstm_layers', type=int, default=1, help="Number of lstm layers in model")
     parser.add_argument('--dropout', type=float, default=0.5, help="Dropout value for transformer model")
     parser.add_argument('--sample_spect_folder', type=str, default=None, help='Train & validate with a mel-spectogram sweep')
-    parser.add_argument('--debug_sample', action='store_true', default=False, help="Deugging with single training loop on one sample")
+    parser.add_argument('--debug_sample', action='store_true', default=False,
+                        help="Deugging with single training loop on one sample")
     parser.add_argument('--conv_layer', action='store_true', default=False, help="Add convolutional layer to Transformer")
     parser.add_argument('--beam_width', type=int, default=32, help="Beam size for beam search decoder")
-    parser.add_argument('--best', action='store_true', help="Using the best mel spectograms generated - EDIT: ran into a lot of errors using these files so with time restraints decided to move on, do not use")
+    parser.add_argument('--best', action='store_true',
+                        help="Using the best mel spectograms generated - EDIT: ran into errors using these files, DON'T USE")
     parser.add_argument('--demo', action='store_true', help='Run demo in Jupyter Notebook')
     return parser.parse_args()
 
@@ -104,64 +106,63 @@ def get_val_err(references, hypotheses, count, total_wer, total_cer, batch_idx):
         count += 1
     return total_wer, total_cer, count
 
-        
+
 def ctc_train(model, train_loader, optimizer, criterion, device, epoch, decoder, sample_size, corpus):
     model.train()
     losses = []
     count = 0
     total_wer = 0.0
-    # enable_autocast = isinstance(model, HybridTransformer)
-    enable_autocast = False
-    
+
     decode_interval = max(1, int(len(train_loader) * 0.20))
-    
+
     # Use torch.cuda.amp.GradScaler for mixed-precision training
     scaler = torch.amp.GradScaler('cuda')  # Changed - torch.cuda.amp deprecated warning
-    torch.autograd.set_detect_anomaly(True) # for running out of GPU memory issues - recommended to help with that
+    torch.autograd.set_detect_anomaly(True)  # for running out of GPU memory issues - recommended to help with that
 
     with Progress() as progress:
         pbar = progress.add_task(f"[green]Training Epoch {epoch}...", total=len(train_loader))
         for batch_idx, (spects, targets, input_lengths, target_lengths, empty_batch) in enumerate(train_loader):
-            if empty_batch: 
+            if empty_batch:
                 continue
             spects, targets = spects.to(device), targets.to(device)
             input_lengths, target_lengths = input_lengths.to(device), target_lengths.to(device)
-            
+
             optimizer.zero_grad()
-            with torch.amp.autocast('cuda', enabled=enable_autocast): # Attempt to mitigate RuntimeError: Function 'CudnnRnnBackward0' returned nan values in its 0th output by adding enabled=False 
-                outputs = model(spects) # Expected output shape: (Batch, Time, Classes)
-                
+            with torch.amp.autocast('cuda', enabled=False): # Mitigating RuntimeError: Function 'CudnnRnnBackward0' returned nan
+                                                            # values in its 0th output
+                outputs = model(spects)  # Expected output shape: (Batch, Time, Classes)
+
                 # --- FIX 2: ADD A GENTLE BIAS TO THE BLANK TOKEN ---
                 # This encourages the model to use the blank token (index 0)
-                blank_bias = 1.5 
+                blank_bias = 1.5
                 outputs[:, :, 0] += blank_bias
                 # --- END FIX 2 ---
 
-                outputs = outputs.float() #  avoiding float16 instability in the LSTM layer
+                outputs = outputs.float()  # avoiding float16 instability in the LSTM layer
                 log_probs = F.log_softmax(outputs, dim=2)
-                
+
                 # Permute for CTCLoss: (Time, Batch, Classes)
                 log_probs_for_loss = log_probs.permute(1, 0, 2)
-                
+
                 T_max = outputs.size(1)
                 input_lengths = input_lengths.clamp(max=T_max)
-                
+
                 loss = criterion(log_probs_for_loss, targets, input_lengths, target_lengths)
 
             # Backpropagation
             scaler.scale(loss).backward()
-            
+
             # --- FIX 1: RE-INTRODUCE GRADIENT CLIPPING ---
             # This is crucial for stabilizing RNN training
             scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # adjusting from 5.0 to 1.0 to see if it relieves error
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # adjusting from 5.0 to 1.0 for error
             # --- END FIX 1 ---
 
             scaler.step(optimizer)
             scaler.update()
 
             losses.append(loss.item())
-            
+
             # Decode for WER calculation
             # print("Input to decoder: ", outputs.shape)
             # if sample_size == 0 and corpus:
@@ -172,10 +173,10 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, decoder,
                     references = get_references(target_lengths, targets)
                     total_wer, count = get_train_wer(references, hypotheses, count, total_wer, batch_idx)
             else:
-                hypotheses = decoder(outputs) # Decoder expects (Batch, Time, Classes)
+                hypotheses = decoder(outputs)  # Decoder expects (Batch, Time, Classes)
                 references = get_references(target_lengths, targets)
                 total_wer, count = get_train_wer(references, hypotheses, count, total_wer, batch_idx)
-            
+
             progress.update(pbar, advance=1, description=f"[green]Training Epoch {epoch}... Loss: {loss.item():.4f}")
 
     avg_loss = sum(losses) / len(losses)
@@ -188,7 +189,7 @@ def ctc_validate(model, val_loader, criterion, device, decoder, epoch):
     losses = []
     count = 0
     total_wer, total_cer = 0.0, 0.0
-    
+
     with Progress() as progress:
         pbar = progress.add_task(f"[cyan]Validating Epoch {epoch}...", total=len(val_loader))
         with torch.no_grad():
@@ -202,10 +203,10 @@ def ctc_validate(model, val_loader, criterion, device, decoder, epoch):
                 outputs = outputs.float()
                 log_probs = F.log_softmax(outputs, dim=2)
                 log_probs_for_loss = log_probs.permute(1, 0, 2)
-                
+
                 loss = criterion(log_probs_for_loss, targets, input_lengths, target_lengths)
                 losses.append(loss.item())
-                
+
                 hypotheses = decoder(outputs)
                 references = get_references(target_lengths, targets)
                 total_wer, total_cer, count = get_val_err(references, hypotheses, count, total_wer, total_cer, batch_idx)
@@ -218,6 +219,63 @@ def ctc_validate(model, val_loader, criterion, device, decoder, epoch):
     return avg_loss, avg_wer, avg_cer
 
 
+def cel_train(model, train_loader, optimizer, criterion, device, epoch, log_interval):
+    model.train()
+    losses = []
+
+    with Progress() as progress:
+        pbar = progress.add_task(f"[green]Epoch {epoch}...", total=len(train_loader))
+
+        for batch_idx, batch in enumerate(train_loader):
+            spects, targets = batch[:2]
+            spects = spects.to(device)
+            targets = targets.to(device)
+
+            optimizer.zero_grad()
+            outputs = model(spects)
+
+            if outputs.dim() == 3:
+                outputs = outputs.view(-1, outputs.shape[-1])
+                targets = targets.view(-1)
+
+            loss = criterion(outputs, targets)
+            loss.backward()
+            optimizer.step()
+
+            losses.append(loss.item())
+
+            if batch_idx % log_interval == 0:
+                print(f"Train Epoch: {epoch} [{batch_idx * len(spects)}/{len(train_loader.dataset)} "
+                      f"({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}")
+
+            progress.advance(pbar)
+    return sum(losses)/len(losses)
+
+
+def cel_validate(model, val_loader, criterion, device):
+    model.eval()
+    losses = []
+    correct = 0
+    total = 0
+
+    with torch.no_grad():
+        for spects, targets in val_loader:
+            spects = spects.to(device)
+            targets = targets.to(device)
+            outputs = model(spects)
+
+            if outputs.dim() == 3:
+                outputs = outputs.view(-1, outputs.shape[-1])
+                targets = targets.view(-1)
+
+            loss = criterion(outputs, targets)
+            losses.append(loss.item())
+
+            predictions = outputs.argmax(dim=1)
+            correct += (predictions == targets).sum().item()
+            total += targets.size(0)
+
+
 def tokens_to_str(tokens):
     return " ".join(tokens) if isinstance(tokens, list) else str(tokens)
 
@@ -226,7 +284,7 @@ def main(args):
     log_dir = os.path.join("neural_networks", args.logdir)
     log_path = os.path.join(BASE_DIR, log_dir)
     writer = SummaryWriter(log_dir=log_path)
-    
+
     # --- Simplified Data Loading Logic ---
     use_cel = False
     if args.full_mini:
@@ -248,9 +306,9 @@ def main(args):
         val_set = CTC_MiniCVDataset(dev_manifest_path, dev_spect_dir)
     elif args.demo:
         manifest_path = os.path.join(BASE_DIR, 'corpus_data/demo_manifest.csv')
-        spect_dir = os.path.join(BASE_DIR, f"corpus_data/processed/demos")
+        spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/demos")
         dataset = CTC_MiniCVDataset(manifest_path, spect_dir)
-    else: # Default case for CEL
+    else:  # Default case for CEL
         use_cel = True
         manifest_path = BASE_DIR / "data" / "manifest.csv"
         spect_dir = BASE_DIR / "data" / "processed" / "mini_cv"
@@ -285,13 +343,21 @@ def main(args):
     # --- Simplified Model Creation Logic ---
     num_classes = len(tokens)
     if args.model_type == 'rnn':
-        model = CTC_RNNEncoder(num_classes=num_classes, hidden_size=args.hidden_dim)
-        collate_fn = ctc_rnn_collate_fn
+        if use_cel:
+            model = CEL_RNNEncoder()
+            collate_fn = cel_rnn_collate_fn
+        else:
+            model = CTC_RNNEncoder(num_classes=num_classes, hidden_size=args.hidden_dim)
+            collate_fn = ctc_rnn_collate_fn
     elif args.model_type == 'cnn':
+        if use_cel:
+            base_model = CEL_CNNEncoder()
+            collate_fn = cel_collate_fn
+        else:
+            base_model = CTC_CNNEncoder(hidden_dim=args.hidden_dim)
+            collate_fn = ctc_collate_fn
         # CNN model requires wrapping
-        base_model = CTC_CNNEncoder(hidden_dim=args.hidden_dim)
         model = WrapEncoder(base_model, num_classes, apply=False, dropout=args.dropout)
-        collate_fn = ctc_collate_fn
     elif args.model_type == 'transformer':
         # Assuming transformer is self-contained like the new RNN model
         model = HybridTransformer(input_dim=N_MELS, vocab_size=num_classes, d_model=args.d_model, nhead=args.nhead, 
@@ -322,30 +388,38 @@ def main(args):
         decoder = beam_search_decoder(tokens, lm_weight=args.lm_weight, word_score=args.word_score, beam_size=args.beam_width)
 
     for epoch in range(1, args.epochs + 1):
-        train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, decoder, 
-                                                                  args.sample_size, args.corpus)
-        val_loss, val_wer, val_cer = ctc_validate(model, val_loader, criterion, device, decoder, epoch)
-        
-        print(f"\n--- Epoch {epoch} Summary ---")
-        print(f"Train Loss: {train_loss:.4f}, Train WER: {train_wer:.4f}")
-        print(f"Val Loss  : {val_loss:.4f}, Val WER  : {val_wer:.4f}, Val CER: {val_cer:.4f}")
-        print("--------------------------\n")
+        if use_cel:
+            train_loss = cel_train(model, train_loader, optimizer, criterion, device)
+            val_loss = cel_validate(model, train_loader, optimizer, criterion, device)
+            print(f"\n--- Epoch {epoch} Summary ---")
+            print(f"Train Loss: {train_loss:.4f}")
+            print(f"Val Loss  : {val_loss:.4f}")
+            print("--------------------------\n")
+        else:
+            train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, decoder, 
+                                                                      args.sample_size, args.corpus)
+            val_loss, val_wer, val_cer = ctc_validate(model, val_loader, criterion, device, decoder, epoch)
 
-        writer.add_scalar('Loss/train', train_loss, epoch)
-        writer.add_scalar('WER/train', train_wer, epoch)
-        writer.add_scalar('Loss/val', val_loss, epoch)
-        writer.add_scalar('WER/val', val_wer, epoch)
-        writer.add_scalar('CER/val', val_cer, epoch)
-        
-        if wandb.run:
-            wandb.log({
-                'epoch': epoch,
-                'train/ctc_loss': train_loss,
-                'train/wer': train_wer,
-                'val/ctc_loss': val_loss,
-                'val/wer': val_wer,
-                'val/cer': val_cer,
-                })
+            print(f"\n--- Epoch {epoch} Summary ---")
+            print(f"Train Loss: {train_loss:.4f}, Train WER: {train_wer:.4f}")
+            print(f"Val Loss  : {val_loss:.4f}, Val WER  : {val_wer:.4f}, Val CER: {val_cer:.4f}")
+            print("--------------------------\n")
+
+            writer.add_scalar('Loss/train', train_loss, epoch)
+            writer.add_scalar('WER/train', train_wer, epoch)
+            writer.add_scalar('Loss/val', val_loss, epoch)
+            writer.add_scalar('WER/val', val_wer, epoch)
+            writer.add_scalar('CER/val', val_cer, epoch)
+
+            if wandb.run:
+                wandb.log({
+                    'epoch': epoch,
+                    'train/ctc_loss': train_loss,
+                    'train/wer': train_wer,
+                    'val/ctc_loss': val_loss,
+                    'val/wer': val_wer,
+                    'val/cer': val_cer,
+                    })
 
     writer.close()
 

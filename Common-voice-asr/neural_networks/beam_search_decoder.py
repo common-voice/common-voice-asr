@@ -28,4 +28,3 @@ def beam_search_decoder(tokens, lm_weight, word_score, beam_size):
         decoded = decoder(log_probs_batch.cpu())
         return [hyp[0].words for hyp in decoded]
     return decode_batch
-

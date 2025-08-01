@@ -28,9 +28,12 @@ best_nmels = 80
 def parse_command_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--full_mini', action='store_true', default=False, help='Load full mini dataset')
-    parser.add_argument('--corpus', action='store_true', default=False, help='Preprocess corpus dataset, split into train & dev')
-    parser.add_argument('--sample', action='store_true', default=False, help='Generate samples of mel spectograms based on varying parameters')
-    parser.add_argument('--best', action='store_true', default=False, help="Generate best mel spectograms per sweep data, paired with corpus for full")
+    parser.add_argument('--corpus', action='store_true', default=False, 
+                        help='Preprocess corpus dataset, split into train & dev')
+    parser.add_argument('--sample', action='store_true', default=False, 
+                        help='Generate samples of mel spectograms based on varying parameters')
+    parser.add_argument('--best', action='store_true', default=False, 
+                        help="Generate best mel spectograms per sweep data, paired with corpus for full")
     return parser.parse_args()
 
 
@@ -44,13 +47,14 @@ def preprocess(raw_audio_dir, output_dir, sample_rate=22050, n_fft=2048, hop_len
         if filename.endswith(".mp3"):
             input_path = os.path.join(raw_audio_dir, filename)
             output_path = os.path.join(output_dir, filename.replace(".mp3", ".npy"))
-            
+
             if os.path.exists(output_path):
                 continue
 
             try:
                 y, sr = librosa.load(input_path, sr=sample_rate)
-                mel_spec = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, power=2.0)
+                mel_spec = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=n_fft, 
+                                                          hop_length=hop_length, n_mels=n_mels, power=2.0)
                 log_mel_spec = librosa.power_to_db(mel_spec, ref=1.0, top_db=80)
                 np.save(output_path, log_mel_spec)
                 print(f"Saved: {output_path}")
@@ -65,7 +69,7 @@ def get_sample(raw_audio_dir, sample_type):
     else:
         sample_size = train_sample
     return random.sample(files, min(len(files), sample_size))
-                
+
 
 def main(args):
     if args.corpus:
@@ -84,7 +88,7 @@ def main(args):
             for sr, n_fft, hop, n_mels in param_combos:
                 output_dir = os.path.join(BASE_DIR,
                                           f"corpus_data/processed/{split}_cv/sample/sr{sr}_nfft{n_fft}_hop{hop}_nmels{n_mels}")
-                preprocess(raw_audio_dir, output_dir, sr, n_fft, hop, n_mels, subset=sample_files)   
+                preprocess(raw_audio_dir, output_dir, sr, n_fft, hop, n_mels, subset=sample_files)
     else:
         if args.full_mini:
             raw_audio_dir = os.path.join(BASE_DIR, "data/raw/full_mini_cv")
@@ -95,7 +99,7 @@ def main(args):
         preprocess(raw_audio_dir, output_dir)
 
 
-# python -m common-voice-asr.Common-voice-asr.preprocess --corpus 
+# python -m common-voice-asr.Common-voice-asr.preprocess --corpus
 if __name__ == "__main__":
     args = parse_command_args()
     main(args)

@@ -78,7 +78,7 @@ class CEL_MiniCVDataset(Dataset):
 
         label = int(row['label'])
         return spect_tensor, label
-    
+
 
 def alt_padding(spects):
     max_T = max(s.shape[0] for s in spects)
@@ -102,12 +102,12 @@ def transformer_collate_fn(batch):
     empty_batch = False
     input_lengths = torch.tensor(input_length, dtype=torch.long)
     target_lengths = torch.tensor(target_length, dtype=torch.long)
-    
+
     padded_spects = alt_padding(spects)
-    
+
     batch_tensor = torch.stack(padded_spects)
     concat_transcripts = torch.cat(transcripts)
-    
+
     return batch_tensor, concat_transcripts, input_lengths, target_lengths, empty_batch
 
 
@@ -115,12 +115,12 @@ def transformer_conv_collate(batch):
     spects, transcripts, input_lengths_raw, target_lengths_raw = zip(*batch)
     empty_batch = False
     DOWNSAMPLING_FACTOR = 4
-    
-    input_lengths = torch.tensor([l // DOWNSAMPLING_FACTOR for l in input_lengths_raw], dtype=torch.long)
+
+    input_lengths = torch.tensor([length // DOWNSAMPLING_FACTOR for length in input_lengths_raw], dtype=torch.long)
     target_lengths = torch.tensor(target_lengths_raw, dtype=torch.long)
-    
+
     padded_spects = alt_padding(spects)
-    
+
     batch_tensor = torch.stack(padded_spects)
     # permute to [B, 1, F, T] for Conv2D
     batch_tensor = batch_tensor.permute(0, 2, 1).unsqueeze(1)
@@ -128,25 +128,25 @@ def transformer_conv_collate(batch):
     concat_transcripts = torch.cat(transcripts)
 
     return batch_tensor, concat_transcripts, input_lengths, target_lengths, empty_batch
-    
+
 
 def ctc_rnn_collate_fn(batch):
     spects, transcripts, input_lengths_raw, target_lengths_raw = zip(*batch)
-    empty_batch = False 
-    
+    empty_batch = False
+
     # The CTC_RNNEncoder uses a CNN frontend that downsamples the time dimension by 4x.
     DOWNSAMPLING_FACTOR = 4
-    
+
     # Calculate the correct sequence lengths for the CTC loss function
-    input_lengths = torch.tensor([l // DOWNSAMPLING_FACTOR for l in input_lengths_raw], dtype=torch.long)
+    input_lengths = torch.tensor([length // DOWNSAMPLING_FACTOR for length in input_lengths_raw], dtype=torch.long)
     target_lengths = torch.tensor(target_lengths_raw, dtype=torch.long)
 
     # Use the existing padding function
     padded_spects = alt_padding(spects)
-    
+
     # Stack into a single tensor for the batch. Output shape is (B, T, F)
     batch_tensor = torch.stack(padded_spects)
-    
+
     concat_transcripts = torch.cat(transcripts)
 
     return batch_tensor, concat_transcripts, input_lengths, target_lengths, empty_batch
@@ -158,23 +158,23 @@ def ctc_collate_fn(batch):
     filtered_batch = [
         (spect, transcript, input_length, target_length)
         for spect, transcript, input_length, target_length in batch
-        if transcript.shape[0] <= (spect.shape[-1] // 4) # Check against downsampled length
+        if transcript.shape[0] <= (spect.shape[-1] // 4)  # Check against downsampled length
     ]
 
     if len(filtered_batch) == 0:
         # It's better to return None and handle it in the training loop, or just skip.
         print("WARNING: Skipping a batch because all samples were too long.")
-        empty_batch = True # added because of an error that you cannot do .to() on a NoneType obj
+        empty_batch = True  # added because of an error that you cannot do .to() on a NoneType obj
         return None, None, None, None, empty_batch
 
     spects, transcripts, input_lengths_raw, target_lengths_raw = zip(*filtered_batch)
 
     # Convert tuples to tensors
     target_lengths = torch.tensor(target_lengths_raw, dtype=torch.long)
-    
+
     # --- THIS IS THE CRITICAL FIX ---
     # Calculate the model's output lengths by dividing by the downsampling factor (4)
-    input_lengths = torch.tensor([l // 4 for l in input_lengths_raw], dtype=torch.long)
+    input_lengths = torch.tensor([length // 4 for length in input_lengths_raw], dtype=torch.long)
     # --- END CRITICAL FIX ---
 
     max_T = max(s.shape[0] for s in spects)
@@ -193,8 +193,8 @@ def ctc_collate_fn(batch):
     batch_tensor = torch.stack(padded_spects)
     # The shape should be (B, 1, F, T) for Conv2D, but your dataset returns (T, F).
     # Let's permute and unsqueeze here to match the expected Conv2d input: (B, C, H, W) -> (B, 1, Freq, Time)
-    batch_tensor = batch_tensor.permute(0, 2, 1).unsqueeze(1) 
-    
+    batch_tensor = batch_tensor.permute(0, 2, 1).unsqueeze(1)
+
     concat_transcripts = torch.cat(transcripts)
 
     return batch_tensor, concat_transcripts, input_lengths, target_lengths, empty_batch

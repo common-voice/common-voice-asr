@@ -55,7 +55,7 @@ def test_ctc_forward_pass_rnn():
     targets = [torch.tensor([char_id_dict[c] for c in t]) for t in transcripts]
     target_lengths = torch.tensor([len(t) for t in targets])
     targets = torch.cat(targets)
-    
+
     model = CTC_RNNEncoder(num_classes=num_classes)
     model.eval()
     with torch.no_grad():

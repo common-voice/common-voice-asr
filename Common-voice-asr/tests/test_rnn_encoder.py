@@ -2,11 +2,9 @@
 import os
 import numpy as np
 import torch
-import torch.nn.functional as F
 from dotenv import load_dotenv
 from pathlib import Path
 from neural_networks.model_A.rnn_encoder import CEL_RNNEncoder
-from neural_networks.model_A.wrap_encoder import WrapEncoder
 
 load_dotenv()
 
