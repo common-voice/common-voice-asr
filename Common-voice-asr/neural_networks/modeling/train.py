@@ -393,7 +393,7 @@ def main(args):
 
     # --- Simplified Model Creation Logic ---
     num_classes = len(tokens)
-    model, collate_fn = model_creation(args.model_type, num_classes, use_cel, args.hidden_dim, args.dropout, args.d_model, 
+    model, collate_fn = model_creation(args.model_type, num_classes, use_cel, args.hidden_dim, args.dropout, args.d_model,
                                        args.nhead, args.dim_feedforward, args.nlayers, args.lstm_hidden, args.lstm_layers,
                                        args.conv_layer)
 
