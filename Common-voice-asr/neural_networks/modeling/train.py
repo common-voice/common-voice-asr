@@ -404,7 +404,7 @@ def main(args):
                               num_workers=4, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=4, pin_memory=True)
 
-    if check_data:
+    if agrs.check_data:
         for batch in train_loader:
             spects, transcripts = batch[:2]
 
