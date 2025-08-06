@@ -370,7 +370,7 @@ def check_data(train_loader):
         break
 
 
-def train_loop(epochs, use_cel, train_loader, val_loader, optimizer, criterion, device, decoder, sample_size,
+def train_loop(epochs, use_cel, model, train_loader, val_loader, optimizer, criterion, device, decoder, sample_size,
                corpus, writer):
     for epoch in range(1, epochs + 1):
         if use_cel:
@@ -466,7 +466,7 @@ def main(args):
         # Assuming beam search decoder is the alternative
         decoder = beam_search_decoder(tokens, lm_weight=args.lm_weight, word_score=args.word_score, beam_size=args.beam_width)
     
-    train_loop(args.epochs, use_cel, train_loader, val_loader, optimizer, criterion, device, decoder, args.sample_size,
+    train_loop(args.epochs, use_cel, modeltrain_loader, val_loader, optimizer, criterion, device, decoder, args.sample_size,
                args.corpus, writer)
 
 
