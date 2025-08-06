@@ -314,10 +314,10 @@ def split_set(set_len, corpus, dataset, train_set, val_set):
     total_len = set_len
     train_len = int(0.85 * total_len)
     val_len = total_len - train_len
-    
+
     if train_len > len(train_set) or val_len > len(val_set):
         raise ValueError(f"Sample sizes too large: train ({train_len}/{len(train_set)}), val ({val_len}/{len(val_set)})")
-    
+
     if corpus:
         train_indices = random.sample(range(len(train_set)), train_len)
         val_indices = random.sample(range(len(val_set)), val_len)
@@ -329,7 +329,7 @@ def split_set(set_len, corpus, dataset, train_set, val_set):
 
 
 def model_creation(model_type, num_classes, use_cel, hidden_dim, dropout, d_model, nhead, dim_ff, nlayers, lstm_hidden,
-                  lstm_layers, conv_layer):
+                   lstm_layers, conv_layer):
     if model_type == 'rnn':
         if use_cel:
             model = CEL_RNNEncoder()
@@ -348,8 +348,8 @@ def model_creation(model_type, num_classes, use_cel, hidden_dim, dropout, d_mode
         model = WrapEncoder(base_model, num_classes, apply=False, dropout=dropout)
     elif model_type == 'transformer':
         # Assuming transformer is self-contained like the new RNN model
-        model = HybridTransformer(input_dim=N_MELS, vocab_size=num_classes, d_model=d_model, nhead=nhead, 
-                                  dim_feedforward=dim_ff, nlayers=nlayers, lstm_hidden=lstm_hidden, 
+        model = HybridTransformer(input_dim=N_MELS, vocab_size=num_classes, d_model=d_model, nhead=nhead,
+                                  dim_feedforward=dim_ff, nlayers=nlayers, lstm_hidden=lstm_hidden,
                                   lstm_layers=lstm_layers, dropout=dropout, conv_layer=conv_layer)
         # Allowing for conformer model adjustment
         if args.conv_layer:
@@ -393,19 +393,21 @@ def main(args):
 
     # --- Simplified Model Creation Logic ---
     num_classes = len(tokens)
-    model, collate_fn = model_creation(args.model_type, num_classes, use_cel, args.hidden_dim, args.dropout, args.d_model, args.nhead,
-                                       args.dim_feedforward, args.nlayers, args.lstm_hidden, args.lstm_layers, args.conv_layer)
+    model, collate_fn = model_creation(args.model_type, num_classes, use_cel, args.hidden_dim, args.dropout, args.d_model, 
+                                       args.nhead, args.dim_feedforward, args.nlayers, args.lstm_hidden, args.lstm_layers,
+                                       args.conv_layer)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
-    
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, collate_fn=collate_fn, shuffle=True, num_workers=4, pin_memory=True)
+
+    train_loader = DataLoader(train_set, batch_size=args.batch_size, collate_fn=collate_fn, shuffle=True,
+                              num_workers=4, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=4, pin_memory=True)
-    
+
     # --- Training Loop ---
     criterion = nn.CTCLoss(blank=0, zero_infinity=True)
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
-    
+
     if args.greedy:
         decoder = GreedyCTCDecoder(tokens)
     else:
@@ -421,8 +423,8 @@ def main(args):
             print(f"Val Loss  : {val_loss:.4f}")
             print("--------------------------\n")
         else:
-            train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, decoder, 
-                                                                      args.sample_size, args.corpus)
+            train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, decoder,
+                                              args.sample_size, args.corpus)
             val_loss, val_wer, val_cer = ctc_validate(model, val_loader, criterion, device, decoder, epoch)
 
             print(f"\n--- Epoch {epoch} Summary ---")
@@ -447,6 +449,7 @@ def main(args):
                     })
 
     writer.close()
+
 
 if __name__ == "__main__":
     args = parse_command_args()
