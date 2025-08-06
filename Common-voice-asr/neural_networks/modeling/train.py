@@ -361,6 +361,15 @@ def model_creation(model_type, num_classes, use_cel, hidden_dim, dropout, d_mode
     return model, collate_fn
 
 
+def check_data(train_loader)
+    for batch in train_loader:
+        spects, transcripts = batch[:2]
+
+        print("Spectrogram shape: ", spects.shape)
+        print("Transcripts: ", transcripts)
+        break
+
+
 def main(args):
     log_dir = os.path.join("neural_networks", args.logdir)
     log_path = os.path.join(BASE_DIR, log_dir)
@@ -405,14 +414,9 @@ def main(args):
     val_loader = DataLoader(val_set, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=4, pin_memory=True)
 
     if args.check_data:
-        for batch in train_loader:
-            spects, transcripts = batch[:2]
-
-            print("Spectrogram shape: ", spects.shape)
-            print("Transcripts: ", transcripts)
-            break
+        check_data(train_loader)
         return
-    
+
     # --- Training Loop ---
     criterion = nn.CTCLoss(blank=0, zero_infinity=True)
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
