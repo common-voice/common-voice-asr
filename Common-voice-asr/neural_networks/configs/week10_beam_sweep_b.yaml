@@ -26,7 +26,7 @@ parameters:
   word_score: 
     values: [-0.52, -0.26, 0.0, 0.5]
   sample_size: 
-    values: [32000]
+    values: [100000]
   d_model: 
     values: [384]
   n_head: 

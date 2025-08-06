@@ -113,7 +113,7 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, decoder,
     count = 0
     total_wer = 0.0
 
-    decode_interval = max(1, int(len(train_loader) * 0.20))
+    decode_interval = max(1, int(len(train_loader) * 0.25))
 
     # Use torch.cuda.amp.GradScaler for mixed-precision training
     scaler = torch.amp.GradScaler('cuda')  # Changed - torch.cuda.amp deprecated warning
@@ -128,8 +128,8 @@ def ctc_train(model, train_loader, optimizer, criterion, device, epoch, decoder,
             input_lengths, target_lengths = input_lengths.to(device), target_lengths.to(device)
 
             optimizer.zero_grad()
-            with torch.amp.autocast('cuda', enabled=False): # Mitigating RuntimeError: Function 'CudnnRnnBackward0' returned nan
-                                                            # values in its 0th output
+            # Mitigating RuntimeError: Function 'CudnnRnnBackward0' returned nan values in 0th output
+            with torch.amp.autocast('cuda', enabled=False):
                 outputs = model(spects)  # Expected output shape: (Batch, Time, Classes)
 
                 # --- FIX 2: ADD A GENTLE BIAS TO THE BLANK TOKEN ---
@@ -280,6 +280,36 @@ def tokens_to_str(tokens):
     return " ".join(tokens) if isinstance(tokens, list) else str(tokens)
 
 
+def get_dataset(use_cel, use_best, data_type=None):
+    corpus_path = os.path.join(BASE_DIR, "corpus_data")
+    if use_cel:
+        manifest_path = BASE_DIR / "data" / "manifest.csv"
+        spect_dir = BASE_DIR / "data" / "processed" / "mini_cv"
+        dataset = CEL_MiniCVDataset(manifest_path, spect_dir)
+    else:
+        if data_type == 'full_mini':
+            manifest_path = os.path.join(BASE_DIR, "data/cleaned_manifest.csv")
+            spect_dir = os.path.join(BASE_DIR, "data/processed/full_mini_cv")
+        elif data_type == 'corpus':
+            if use_best:
+                print("Using best mel spectograms")
+                train_spect_dir = os.path.join(corpus_path, "processed/best_train_cv")
+                dev_spect_dir = os.path.join(corpus_path, "processed/best_dev_cv")
+            else:
+                train_spect_dir = os.path.join(corpus_path, "processed/train_cv")
+                dev_spect_dir = os.path.join(corpus_path, "processed/dev_cv")
+            train_manifest_path = os.path.join(corpus_path, "cleaned_train.csv")
+            dev_manifest_path = os.path.join(corpus_path, "cleaned_dev.csv")
+            train_set = CTC_MiniCVDataset(train_manifest_path, train_spect_dir)
+            val_set = CTC_MiniCVDataset(dev_manifest_path, dev_spect_dir)
+            return train_set, val_set
+        elif data_type == "demo":
+            manifest_path = os.path.join(corpus_path, 'demo_manifest.csv')
+            spect_dir = os.path.join(corpus_path, "processed/demos")
+        dataset = CTC_MiniCVDataset(manifest_path, spect_dir)
+    return dataset
+
+
 def main(args):
     log_dir = os.path.join("neural_networks", args.logdir)
     log_path = os.path.join(BASE_DIR, log_dir)
@@ -287,47 +317,29 @@ def main(args):
 
     # --- Simplified Data Loading Logic ---
     use_cel = False
-    if args.full_mini:
-        # This case seems to be for CTC, so setting use_cel to False
-        manifest_path = os.path.join(BASE_DIR, "data/cleaned_manifest.csv")
-        spect_dir = os.path.join(BASE_DIR, "data/processed/full_mini_cv")
-        dataset = CTC_MiniCVDataset(manifest_path, spect_dir)
-    elif args.corpus or args.debug_sample:
-        if args.best:
-            print("Using best mel spectograms")
-            train_spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/best_train_cv")
-            dev_spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/best_dev_cv")
+
+    if args.corpus or args.debug_sample:
+        train_set, val_set = get_dataset(use_cel, args.best, 'corpus')
+    else:
+        if args.full_mini:
+            dataset = get_dataset(use_cel, args.best, 'full_mini')
+        elif args.demo:
+            dataset = get_dataset(use_cel, args.best, 'demo')
         else:
-            train_spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/train_cv")
-            dev_spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/dev_cv")
-        train_manifest_path = os.path.join(BASE_DIR, "corpus_data/cleaned_train.csv")
-        dev_manifest_path = os.path.join(BASE_DIR, "corpus_data/cleaned_dev.csv")
-        train_set = CTC_MiniCVDataset(train_manifest_path, train_spect_dir)
-        val_set = CTC_MiniCVDataset(dev_manifest_path, dev_spect_dir)
-    elif args.demo:
-        manifest_path = os.path.join(BASE_DIR, 'corpus_data/demo_manifest.csv')
-        spect_dir = os.path.join(BASE_DIR, "corpus_data/processed/demos")
-        dataset = CTC_MiniCVDataset(manifest_path, spect_dir)
-    else:  # Default case for CEL
-        use_cel = True
-        manifest_path = BASE_DIR / "data" / "manifest.csv"
-        spect_dir = BASE_DIR / "data" / "processed" / "mini_cv"
-        dataset = CEL_MiniCVDataset(manifest_path, spect_dir)
-    
-    if args.debug_sample:
-        print("--- DEBUG MODE ENABLED: USING ONE SAMPLE ---")
-        train_set = torch.utils.data.Subset(train_set, [0])
-        val_set = torch.utils.data.Subset(val_set, [0])
-
-
-    # For non-corpus cases that need splitting
-    if not (args.corpus or args.debug_sample):
+            use_cel = True
+            dataset = get_dataset(use_cel, args.best, 'mini')
+        # For non-corpus cases that need splitting
         total_len = len(dataset)
         train_len = int(0.8 * total_len)
         val_len = total_len - train_len
         train_set, val_set = random_split(dataset, [train_len, val_len])
 
-    # Change: Sample size splitting 
+    if args.debug_sample:
+        print("--- DEBUG MODE ENABLED: USING ONE SAMPLE ---")
+        train_set = torch.utils.data.Subset(train_set, [0])
+        val_set = torch.utils.data.Subset(val_set, [0])
+
+    # Change: Sample size splitting
     if args.corpus and not args.sample_size == 0:
         total_len = args.sample_size
         train_len = int(0.85 * total_len)
@@ -338,7 +350,6 @@ def main(args):
         val_indices = random.sample(range(len(val_set)), val_len)
         train_set = Subset(train_set, train_indices)
         val_set = Subset(val_set, val_indices)
-
 
     # --- Simplified Model Creation Logic ---
     num_classes = len(tokens)

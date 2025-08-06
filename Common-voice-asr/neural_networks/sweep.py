@@ -30,9 +30,9 @@ with open(config_path_spects) as f:
 
 def parse_command_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', choices=['a', 'b'], required=True, 
+    parser.add_argument('--model', choices=['a', 'b'], required=True,
                         help='Specify which model to sweep. a: RNN & CNN or b: Hybrid Transformer')
-    parser.add_argument('--sample_spects', action='store_true', default=False, 
+    parser.add_argument('--sample_spects', action='store_true', default=False,
                         help='Train & validate with a mel-spectogram sweep')
     parser.add_argument('--config', type=str, required=True, help="Specify config file to run with")
     parser.add_argument('--project_name', type=str, required=True, help="Specify project name")

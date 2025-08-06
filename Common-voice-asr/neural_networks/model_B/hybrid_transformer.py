@@ -2,6 +2,7 @@ import torch.nn as nn
 from neural_networks.model_A.cnn_encoder import CTC_CNNEncoder
 from neural_networks.model_B.positional_encoding import PositionalEncoding
 
+
 class HybridTransformer(nn.Module):
     def __init__(self, input_dim, vocab_size, cnn_hidden=32, d_model=512, nhead=8, dim_feedforward=2048, nlayers=6,
                  lstm_hidden=256, lstm_layers=1, dropout=0.5, conv_layer=False):
