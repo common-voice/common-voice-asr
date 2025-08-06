@@ -28,11 +28,11 @@ best_nmels = 80
 def parse_command_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--full_mini', action='store_true', default=False, help='Load full mini dataset')
-    parser.add_argument('--corpus', action='store_true', default=False, 
+    parser.add_argument('--corpus', action='store_true', default=False,
                         help='Preprocess corpus dataset, split into train & dev')
-    parser.add_argument('--sample', action='store_true', default=False, 
+    parser.add_argument('--sample', action='store_true', default=False,
                         help='Generate samples of mel spectograms based on varying parameters')
-    parser.add_argument('--best', action='store_true', default=False, 
+    parser.add_argument('--best', action='store_true', default=False,
                         help="Generate best mel spectograms per sweep data, paired with corpus for full")
     return parser.parse_args()
 
@@ -53,7 +53,7 @@ def preprocess(raw_audio_dir, output_dir, sample_rate=22050, n_fft=2048, hop_len
 
             try:
                 y, sr = librosa.load(input_path, sr=sample_rate)
-                mel_spec = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=n_fft, 
+                mel_spec = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=n_fft,
                                                           hop_length=hop_length, n_mels=n_mels, power=2.0)
                 log_mel_spec = librosa.power_to_db(mel_spec, ref=1.0, top_db=80)
                 np.save(output_path, log_mel_spec)

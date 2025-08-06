@@ -310,6 +310,57 @@ def get_dataset(use_cel, use_best, data_type=None):
     return dataset
 
 
+def split_set(set_len, corpus):
+    total_len = set_len
+    train_len = int(0.85 * total_len)
+    val_len = total_len - train_len
+    
+    if train_len > len(train_set) or val_len > len(val_set):
+        raise ValueError(f"Sample sizes too large: train ({train_len}/{len(train_set)}), val ({val_len}/{len(val_set)})")
+    
+    if corpus:
+        train_indices = random.sample(range(len(train_set)), train_len, nhead, dim_ff)
+        val_indices = random.sample(range(len(val_set)), val_len)
+        train_set = Subset(train_set, train_indices)
+        val_set = Subset(val_set, val_indices)
+    else:
+        train_set, val_set = random_split(dataset, [train_len, val_len])
+    return train_set, val_set
+
+
+def model_creation(model_type, num_classes, hidden_dim, dropout, d_model, nhead, dim_ff, nlayers, lstm_hidden,
+                  lstm_layers, conv_layer)
+    if model_type == 'rnn':
+        if use_cel:
+            model = CEL_RNNEncoder()
+            collate_fn = cel_rnn_collate_fn
+        else:
+            model = CTC_RNNEncoder(num_classes=num_classes, hidden_size=hidden_dim)
+            collate_fn = ctc_rnn_collate_fn
+    elif model_type == 'cnn':
+        if use_cel:
+            base_model = CEL_CNNEncoder()
+            collate_fn = cel_collate_fn
+        else:
+            base_model = CTC_CNNEncoder(hidden_dim=hidden_dim)
+            collate_fn = ctc_collate_fn
+        # CNN model requires wrapping
+        model = WrapEncoder(base_model, num_classes, apply=False, dropout=dropout)
+    elif model_type == 'transformer':
+        # Assuming transformer is self-contained like the new RNN model
+        model = HybridTransformer(input_dim=N_MELS, vocab_size=num_classes, d_model=d_model, nhead=nhead, 
+                                  dim_feedforward=dim_ff, nlayers=nlayers, lstm_hidden=lstm_hidden, 
+                                  lstm_layers=lstm_layers, dropout=dropout, conv_layer=conv_layer)
+        # Allowing for conformer model adjustment
+        if args.conv_layer:
+            collate_fn = transformer_conv_collate
+        else:
+            collate_fn = transformer_collate_fn
+    else:
+        raise ValueError(f"Unknown model type: {args.model_type}")
+    return model, collate_fn
+
+
 def main(args):
     log_dir = os.path.join("neural_networks", args.logdir)
     log_path = os.path.join(BASE_DIR, log_dir)
@@ -329,10 +380,7 @@ def main(args):
             use_cel = True
             dataset = get_dataset(use_cel, args.best, 'mini')
         # For non-corpus cases that need splitting
-        total_len = len(dataset)
-        train_len = int(0.8 * total_len)
-        val_len = total_len - train_len
-        train_set, val_set = random_split(dataset, [train_len, val_len])
+        train_set, val_set = sample_split(len(dataset), args.corpus)
 
     if args.debug_sample:
         print("--- DEBUG MODE ENABLED: USING ONE SAMPLE ---")
@@ -341,46 +389,12 @@ def main(args):
 
     # Change: Sample size splitting
     if args.corpus and not args.sample_size == 0:
-        total_len = args.sample_size
-        train_len = int(0.85 * total_len)
-        val_len = total_len - train_len
-        if train_len > len(train_set) or val_len > len(val_set):
-            raise ValueError(f"Sample sizes too large: train ({train_len}/{len(train_set)}), val ({val_len}/{len(val_set)})")
-        train_indices = random.sample(range(len(train_set)), train_len)
-        val_indices = random.sample(range(len(val_set)), val_len)
-        train_set = Subset(train_set, train_indices)
-        val_set = Subset(val_set, val_indices)
+        train_set, val_set = split_set(args.sample_size, args.corpus)
 
     # --- Simplified Model Creation Logic ---
     num_classes = len(tokens)
-    if args.model_type == 'rnn':
-        if use_cel:
-            model = CEL_RNNEncoder()
-            collate_fn = cel_rnn_collate_fn
-        else:
-            model = CTC_RNNEncoder(num_classes=num_classes, hidden_size=args.hidden_dim)
-            collate_fn = ctc_rnn_collate_fn
-    elif args.model_type == 'cnn':
-        if use_cel:
-            base_model = CEL_CNNEncoder()
-            collate_fn = cel_collate_fn
-        else:
-            base_model = CTC_CNNEncoder(hidden_dim=args.hidden_dim)
-            collate_fn = ctc_collate_fn
-        # CNN model requires wrapping
-        model = WrapEncoder(base_model, num_classes, apply=False, dropout=args.dropout)
-    elif args.model_type == 'transformer':
-        # Assuming transformer is self-contained like the new RNN model
-        model = HybridTransformer(input_dim=N_MELS, vocab_size=num_classes, d_model=args.d_model, nhead=args.nhead, 
-                                  dim_feedforward=args.dim_feedforward, nlayers=args.nlayers, lstm_hidden=args.lstm_hidden, 
-                                  lstm_layers=args.lstm_layers, dropout=args.dropout, conv_layer=args.conv_layer)
-        # Allowing for conformer model adjustment
-        if args.conv_layer:
-            collate_fn = transformer_conv_collate
-        else:
-            collate_fn = transformer_collate_fn
-    else:
-        raise ValueError(f"Unknown model type: {args.model_type}")
+    model, collate_fn = model_creation(args.model_type, num_classes, args.hidden_dim, args.dropout, args.d_model, nhead=args.nhead,
+                                       args.dim_feedforward, args.nlayers, args.lstm_hidden, args.lstm_layers, args.conv_layer)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)

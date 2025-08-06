@@ -145,7 +145,7 @@ def fetch_corpus(manifest_path, transcripts_file, output_dir):
             else:
                 print(f"Warning: {filename} not found")
 
-# Debugging for files missing from the spectograms. 
+# Debugging for files missing from the spectograms.
 # Ultimately handled in preprocessing, but were useful in figuring out the issue of their absence.
 
 
