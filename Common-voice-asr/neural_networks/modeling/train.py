@@ -370,6 +370,45 @@ def check_data(train_loader):
         break
 
 
+def train_loop(epochs, use_cel, train_loader, val_loader, optimizer, criterion, device, decoder, sample_size,
+               corpus, writer):
+    for epoch in range(1, epochs + 1):
+        if use_cel:
+            train_loss = cel_train(model, train_loader, optimizer, criterion, device)
+            val_loss = cel_validate(model, train_loader, optimizer, criterion, device)
+            print(f"\n--- Epoch {epoch} Summary ---")
+            print(f"Train Loss: {train_loss:.4f}")
+            print(f"Val Loss  : {val_loss:.4f}")
+            print("--------------------------\n")
+        else:
+            train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, decoder,
+                                              sample_size, corpus)
+            val_loss, val_wer, val_cer = ctc_validate(model, val_loader, criterion, device, decoder, epoch)
+
+            print(f"\n--- Epoch {epoch} Summary ---")
+            print(f"Train Loss: {train_loss:.4f}, Train WER: {train_wer:.4f}")
+            print(f"Val Loss  : {val_loss:.4f}, Val WER  : {val_wer:.4f}, Val CER: {val_cer:.4f}")
+            print("--------------------------\n")
+
+            writer.add_scalar('Loss/train', train_loss, epoch)
+            writer.add_scalar('WER/train', train_wer, epoch)
+            writer.add_scalar('Loss/val', val_loss, epoch)
+            writer.add_scalar('WER/val', val_wer, epoch)
+            writer.add_scalar('CER/val', val_cer, epoch)
+
+            if wandb.run:
+                wandb.log({
+                    'epoch': epoch,
+                    'train/ctc_loss': train_loss,
+                    'train/wer': train_wer,
+                    'val/ctc_loss': val_loss,
+                    'val/wer': val_wer,
+                    'val/cer': val_cer,
+                    })
+
+    writer.close()
+
+
 def main(args):
     log_dir = os.path.join("neural_networks", args.logdir)
     log_path = os.path.join(BASE_DIR, log_dir)
@@ -426,42 +465,9 @@ def main(args):
     else:
         # Assuming beam search decoder is the alternative
         decoder = beam_search_decoder(tokens, lm_weight=args.lm_weight, word_score=args.word_score, beam_size=args.beam_width)
-
-    for epoch in range(1, args.epochs + 1):
-        if use_cel:
-            train_loss = cel_train(model, train_loader, optimizer, criterion, device)
-            val_loss = cel_validate(model, train_loader, optimizer, criterion, device)
-            print(f"\n--- Epoch {epoch} Summary ---")
-            print(f"Train Loss: {train_loss:.4f}")
-            print(f"Val Loss  : {val_loss:.4f}")
-            print("--------------------------\n")
-        else:
-            train_loss, train_wer = ctc_train(model, train_loader, optimizer, criterion, device, epoch, decoder,
-                                              args.sample_size, args.corpus)
-            val_loss, val_wer, val_cer = ctc_validate(model, val_loader, criterion, device, decoder, epoch)
-
-            print(f"\n--- Epoch {epoch} Summary ---")
-            print(f"Train Loss: {train_loss:.4f}, Train WER: {train_wer:.4f}")
-            print(f"Val Loss  : {val_loss:.4f}, Val WER  : {val_wer:.4f}, Val CER: {val_cer:.4f}")
-            print("--------------------------\n")
-
-            writer.add_scalar('Loss/train', train_loss, epoch)
-            writer.add_scalar('WER/train', train_wer, epoch)
-            writer.add_scalar('Loss/val', val_loss, epoch)
-            writer.add_scalar('WER/val', val_wer, epoch)
-            writer.add_scalar('CER/val', val_cer, epoch)
-
-            if wandb.run:
-                wandb.log({
-                    'epoch': epoch,
-                    'train/ctc_loss': train_loss,
-                    'train/wer': train_wer,
-                    'val/ctc_loss': val_loss,
-                    'val/wer': val_wer,
-                    'val/cer': val_cer,
-                    })
-
-    writer.close()
+    
+    train_loop(args.epochs, use_cel, train_loader, val_loader, optimizer, criterion, device, decoder, args.sample_size,
+               args.corpus, writer)
 
 
 if __name__ == "__main__":
