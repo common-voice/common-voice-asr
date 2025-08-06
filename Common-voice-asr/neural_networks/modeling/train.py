@@ -329,7 +329,7 @@ def split_set(set_len, corpus):
 
 
 def model_creation(model_type, num_classes, hidden_dim, dropout, d_model, nhead, dim_ff, nlayers, lstm_hidden,
-                  lstm_layers, conv_layer)
+                  lstm_layers, conv_layer):
     if model_type == 'rnn':
         if use_cel:
             model = CEL_RNNEncoder()
