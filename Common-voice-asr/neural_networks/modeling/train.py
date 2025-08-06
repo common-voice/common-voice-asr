@@ -310,7 +310,7 @@ def get_dataset(use_cel, use_best, data_type=None):
     return dataset
 
 
-def split_set(set_len, corpus):
+def split_set(set_len, corpus, train_set, val_set):
     total_len = set_len
     train_len = int(0.85 * total_len)
     val_len = total_len - train_len
@@ -389,7 +389,7 @@ def main(args):
 
     # Change: Sample size splitting
     if args.corpus and not args.sample_size == 0:
-        train_set, val_set = split_set(args.sample_size, args.corpus)
+        train_set, val_set = split_set(args.sample_size, args.corpus, train_set, val_set)
 
     # --- Simplified Model Creation Logic ---
     num_classes = len(tokens)
