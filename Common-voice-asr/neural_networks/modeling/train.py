@@ -361,7 +361,7 @@ def model_creation(model_type, num_classes, use_cel, hidden_dim, dropout, d_mode
     return model, collate_fn
 
 
-def check_data(train_loader)
+def check_data(train_loader):
     for batch in train_loader:
         spects, transcripts = batch[:2]
 
