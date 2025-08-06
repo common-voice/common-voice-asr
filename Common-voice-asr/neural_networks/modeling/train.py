@@ -310,7 +310,7 @@ def get_dataset(use_cel, use_best, data_type=None):
     return dataset
 
 
-def split_set(set_len, corpus, train_set, val_set):
+def split_set(set_len, corpus, dataset, train_set, val_set):
     total_len = set_len
     train_len = int(0.85 * total_len)
     val_len = total_len - train_len
@@ -319,7 +319,7 @@ def split_set(set_len, corpus, train_set, val_set):
         raise ValueError(f"Sample sizes too large: train ({train_len}/{len(train_set)}), val ({val_len}/{len(val_set)})")
     
     if corpus:
-        train_indices = random.sample(range(len(train_set)), train_len, nhead, dim_ff)
+        train_indices = random.sample(range(len(train_set)), train_len)
         val_indices = random.sample(range(len(val_set)), val_len)
         train_set = Subset(train_set, train_indices)
         val_set = Subset(val_set, val_indices)
@@ -328,7 +328,7 @@ def split_set(set_len, corpus, train_set, val_set):
     return train_set, val_set
 
 
-def model_creation(model_type, num_classes, hidden_dim, dropout, d_model, nhead, dim_ff, nlayers, lstm_hidden,
+def model_creation(model_type, num_classes, use_cel, hidden_dim, dropout, d_model, nhead, dim_ff, nlayers, lstm_hidden,
                   lstm_layers, conv_layer):
     if model_type == 'rnn':
         if use_cel:
@@ -380,7 +380,7 @@ def main(args):
             use_cel = True
             dataset = get_dataset(use_cel, args.best, 'mini')
         # For non-corpus cases that need splitting
-        train_set, val_set = sample_split(len(dataset), args.corpus)
+        train_set, val_set = split_set(len(dataset), args.corpus)
 
     if args.debug_sample:
         print("--- DEBUG MODE ENABLED: USING ONE SAMPLE ---")
@@ -389,11 +389,11 @@ def main(args):
 
     # Change: Sample size splitting
     if args.corpus and not args.sample_size == 0:
-        train_set, val_set = split_set(args.sample_size, args.corpus, train_set, val_set)
+        train_set, val_set = split_set(args.sample_size, args.corpus, dataset, train_set, val_set)
 
     # --- Simplified Model Creation Logic ---
     num_classes = len(tokens)
-    model, collate_fn = model_creation(args.model_type, num_classes, args.hidden_dim, args.dropout, args.d_model, args.nhead,
+    model, collate_fn = model_creation(args.model_type, num_classes, use_cel, args.hidden_dim, args.dropout, args.d_model, args.nhead,
                                        args.dim_feedforward, args.nlayers, args.lstm_hidden, args.lstm_layers, args.conv_layer)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
