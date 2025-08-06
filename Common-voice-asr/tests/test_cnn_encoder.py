@@ -12,7 +12,7 @@ load_dotenv()
 BASE_DIR = Path(os.getenv("BASE_DIR", Path.cwd()))
 if BASE_DIR.name != "Common-voice-asr":
     BASE_DIR = BASE_DIR / "Common-voice-asr"
-PROCESSED_DIR = BASE_DIR / "corpus_data" / "processed" / "train_cv"
+PROCESSED_DIR = BASE_DIR / "data" / "processed" / "mini_cv"
 NUM_TEST_FILES = 5
 
 
