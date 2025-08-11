@@ -1,11 +1,9 @@
 import librosa
 import numpy as np
 import torch
-import torchaudio
 import os
 import shutil
 import csv
-import pandas as pd
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -31,7 +29,7 @@ def voiced_percentage(path, threshold=0.5):
     wav = read_audio(str(path), sampling_rate=sr)
 
     speech_timestamps = get_speech_timestamps(wav, model, sampling_rate=sr)
-    total_samples = len(wav)  
+    total_samples = len(wav)
     voiced_samples = sum([segment['end'] - segment['start'] for segment in speech_timestamps])
     voice_ratio = voiced_samples / total_samples
     return voice_ratio
@@ -51,22 +49,20 @@ def get_audio_metrics(path, frame_ms=20, hop_ms=10):
         frame = y[i:i+frame_len]
         peaks.append(np.max(np.abs(frame)))
     peaks = np.array(peaks)
-    db = librosa.amplitude_to_db(peaks, ref=1.0)
 
     # signal-to-noise ratio
     noise_rms_estimate = np.median(rms[:max(1, int(0.5*sr/hop_len))])
     voice_mask = rms > (noise_rms_estimate * 2)
-    voice_ratio = voice_mask.mean()
     if voice_mask.any():
         signal_rms = rms[voice_mask].mean()
     else:
         signal_rms = 0.0
-    snr_db = 20 * np.log10(((signal_rms + 1e-12) / (noise_rms_estimate  + 1e-12)))
+    snr_db = 20 * np.log10(((signal_rms + 1e-12) / (noise_rms_estimate + 1e-12)))
 
     return float(np.mean(rms)), float(np.max(peaks)), float(snr_db)
 
 
-def process_audio(audio_dir, rms_min=0.02, amp_max = 1.0, snr_min=10, voice_ratio_min=0.5):
+def process_audio(audio_dir, rms_min=0.02, amp_max=1.0, snr_min=10, voice_ratio_min=0.5):
     with open(MANIFEST_PATH, 'w', newline='', encoding='utf-8') as manifest_file:
         writer = csv.writer(manifest_file)
         writer.writerow(['filename', 'avg_rms', 'peak_amp', 'signal_noise_ratio', 'voice_ratio', 'clean'])

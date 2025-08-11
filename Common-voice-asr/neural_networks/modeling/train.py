@@ -464,7 +464,7 @@ def main(args):
     else:
         # Assuming beam search decoder is the alternative
         decoder = beam_search_decoder(tokens, lm_weight=args.lm_weight, word_score=args.word_score, beam_size=args.beam_width)
-    
+
     train_loop(args.epochs, use_cel, model, train_loader, val_loader, optimizer, criterion, device, decoder, args.sample_size,
                args.corpus, writer)
 
