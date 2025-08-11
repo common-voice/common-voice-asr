@@ -1,0 +1,47 @@
+project: week10_beam_b
+name: week10_beam_b
+method: bayes
+metric:
+  name: val_wer
+  goal: minimize
+parameters:
+  full_mini: 
+    values: [False]
+  corpus: 
+    values: [True]
+  greedy: 
+    values: [False]
+  model_type: 
+    values: ["transformer"]
+  epochs: 
+    values: [5]
+  learning_rate: 
+    values: [0.0001, 0.001, 0.0005]
+  batch_size:
+    values: [16]
+  hidden_dimension:
+    values: [64]
+  lm_weight:
+    values: [0.5, 1.0, 2.0, 3.23]
+  word_score: 
+    values: [-0.52, -0.26, 0.0, 0.5]
+  sample_size: 
+    values: [100000]
+  d_model: 
+    values: [384]
+  n_head: 
+    values: [8]
+  dim_feedforward: 
+    values: [2048]
+  nlayers: 
+    values: [3]
+  lstm_hidden: 
+    values: [256]
+  lstm_layers: 
+    values: [1]
+  dropout: 
+    values: [0.1]
+  sample_spect_folder: 
+    values: [None]
+  beam_width: 
+    values: [16, 32, 48]

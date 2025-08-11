@@ -1,7 +1,6 @@
 import pandas as pd
 import os
 import re
-import csv
 from pathlib import Path
 from dotenv import load_dotenv
 from collections import Counter
@@ -16,7 +15,7 @@ output_path = BASE_DIR / "data" / "corpus.txt"
 lexicon_path = BASE_DIR / "data" / "lexicon.txt"
 cleaned_path = BASE_DIR / "data" / "cleaned_text.txt"
 cleaned_csv = BASE_DIR / "data" / "cleaned_manifest.csv"
-                
+
 MANIFEST_TRAIN = os.path.join(BASE_DIR, 'corpus_data/manifest_train.csv')
 MANIFEST_DEV = os.path.join(BASE_DIR, 'corpus_data/manifest_dev.csv')
 ENT_LEXICON_PATH = BASE_DIR / "corpus_data" / "lexicon.txt"
@@ -42,12 +41,12 @@ def normalize_text(text):
 
 def clean_manifest(manifest_path, cleaned_path, spect_dir):
     manifest = pd.read_csv(manifest_path, usecols=['filename', 'duration', 'transcript'])
-    
+
     # transcript
     manifest['transcript'] = manifest['transcript'].fillna("")
     manifest['transcript'] = manifest['transcript'].apply(normalize_text)
     manifest = manifest[manifest["transcript"].str.strip().astype(bool)]
-    
+
     # removing non-existing spects
     valid_rows = []
     for idx, row in manifest.iterrows():
@@ -56,7 +55,7 @@ def clean_manifest(manifest_path, cleaned_path, spect_dir):
             valid_rows.append(row)
         else:
             print(f"[REMOVED] No spectrogram: {row['filename']}")
-    
+
     cleaned_df = pd.DataFrame(valid_rows)
     cleaned_df.to_csv(cleaned_path, index=False)
     return cleaned_df['transcript'].tolist()
@@ -67,7 +66,7 @@ def write_corpus(transcripts, corpus_path):
         for line in transcripts:
             if line.strip():
                 f.write(line.strip() + "\n")
-    
+
 
 def create_lexicon(corpus_path, lexicon_path):
     with open(corpus_path, encoding="utf-8") as f:

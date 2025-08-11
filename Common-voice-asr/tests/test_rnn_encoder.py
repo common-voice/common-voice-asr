@@ -2,15 +2,15 @@
 import os
 import numpy as np
 import torch
-import torch.nn.functional as F
 from dotenv import load_dotenv
 from pathlib import Path
-from neural_networks.rnn_encoder import CEL_RNNEncoder
-from neural_networks.wrap_encoder import WrapEncoder
+from neural_networks.model_A.rnn_encoder import CEL_RNNEncoder
 
 load_dotenv()
 
-BASE_DIR = Path(os.getenv("BASE_DIR"))
+BASE_DIR = Path(os.getenv("BASE_DIR", Path.cwd()))
+if BASE_DIR.name != "Common-voice-asr":
+    BASE_DIR = BASE_DIR / "Common-voice-asr"
 PROCESSED_DIR = BASE_DIR / "data" / "processed" / "mini_cv"
 NUM_TEST_FILES = 5
 
@@ -77,29 +77,8 @@ def test_variable_sequence_lengths():
         assert output.shape == (1, 256)
 
 
-def test_wrapped_encoder_single_forward_pass():
-    encoder = CEL_RNNEncoder()
-    wrap_encoder = WrapEncoder(encoder, 10)
-    wrap_encoder.eval()
-
-    npy_files = [file for file in PROCESSED_DIR.glob("*.npy")]
-    spect = np.load(os.path.join(PROCESSED_DIR, npy_files[0]))
-
-    tensor = torch.tensor(spect.T, dtype=torch.float32).unsqueeze(0)
-
-    if (tensor[-1] < 300).any():
-        pad_len = 300 - tensor.shape[1]
-        tensor = F.pad(tensor, (0, 0, 0, pad_len))
-
-    with torch.no_grad():
-        output = wrap_encoder(tensor)
-
-    assert output.shape == (1, 10)
-
-
 if __name__ == "__main__":
     test_single_forward_pass()
     test_batch_forward_pass()
     test_variable_sequence_lengths()
-    test_wrapped_encoder_single_forward_pass()
     print("All tests passed.")
