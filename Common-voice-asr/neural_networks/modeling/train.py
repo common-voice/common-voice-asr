@@ -310,17 +310,16 @@ def get_dataset(use_cel, use_best, data_type=None):
     return dataset
 
 
-def split_set(set_len, corpus, dataset, train_set, val_set):
+def split_set(set_len, corpus, dataset, train_set=None, val_set=None):
     total_len = set_len
     train_len = int(0.85 * total_len)
     val_len = total_len - train_len
 
-    if train_len > len(train_set) or val_len > len(val_set):
-        raise ValueError(f"Sample sizes too large: train ({train_len}/{len(train_set)}), val ({val_len}/{len(val_set)})")
-
     if corpus:
         train_indices = random.sample(range(len(train_set)), train_len)
         val_indices = random.sample(range(len(val_set)), val_len)
+        if train_len > len(train_set) or val_len > len(val_set):
+            raise ValueError(f"Sample sizes too large: train ({train_len}/{len(train_set)}), val ({val_len}/{len(val_set)})")
         train_set = Subset(train_set, train_indices)
         val_set = Subset(val_set, val_indices)
     else:
@@ -428,7 +427,7 @@ def main(args):
             use_cel = True
             dataset = get_dataset(use_cel, args.best, 'mini')
         # For non-corpus cases that need splitting
-        train_set, val_set = split_set(len(dataset), args.corpus)
+        train_set, val_set = split_set(len(dataset), args.corpus, dataset)
 
     if args.debug_sample:
         print("--- DEBUG MODE ENABLED: USING ONE SAMPLE ---")
@@ -466,7 +465,7 @@ def main(args):
         # Assuming beam search decoder is the alternative
         decoder = beam_search_decoder(tokens, lm_weight=args.lm_weight, word_score=args.word_score, beam_size=args.beam_width)
     
-    train_loop(args.epochs, use_cel, modeltrain_loader, val_loader, optimizer, criterion, device, decoder, args.sample_size,
+    train_loop(args.epochs, use_cel, model, train_loader, val_loader, optimizer, criterion, device, decoder, args.sample_size,
                args.corpus, writer)
 
 
